@@ -1,12 +1,18 @@
 const http = require("http");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+const db = require("./db");
+const MetaService = require("./metaService");
+const AutomationEngine = require("./automationEngine");
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 4173);
-const env = loadEnv(path.join(ROOT, ".env"));
-const API_VERSION = env.META_API_VERSION || "v21.0";
-const GRAPH_BASE = `https://graph.facebook.com/${API_VERSION}`;
+const env = { ...loadEnv(path.join(ROOT, ".env")), ...process.env };
+const CRON_SECRET = env.CRON_SECRET || "";
+
+const metaService = new MetaService(env);
+const engine = new AutomationEngine(metaService);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -33,14 +39,6 @@ function loadEnv(filePath) {
     }, {});
 }
 
-function parseNamedIds(value) {
-  if (!value) return [];
-  return value.split(",").map((item) => {
-    const [label, id] = item.split(":");
-    return { label: label.trim(), id: id.trim() };
-  }).filter((item) => item.label && item.id);
-}
-
 function json(res, statusCode, payload) {
   const body = JSON.stringify(payload, null, 2);
   res.writeHead(statusCode, {
@@ -50,187 +48,6 @@ function json(res, statusCode, payload) {
   res.end(body);
 }
 
-function token() {
-  return env.META_ACCESS_TOKEN;
-}
-
-async function graph(pathname, params = {}, accessToken = token()) {
-  if (!accessToken) {
-    const error = new Error("META_ACCESS_TOKEN mancante nel file .env");
-    error.status = 400;
-    throw error;
-  }
-
-  const url = new URL(`${GRAPH_BASE}/${pathname.replace(/^\//, "")}`);
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") url.searchParams.set(key, value);
-  });
-  url.searchParams.set("access_token", accessToken);
-
-  const response = await fetch(url);
-  const payload = await response.json();
-
-  if (!response.ok || payload.error) {
-    const error = new Error(payload.error?.message || `Errore Meta API ${response.status}`);
-    error.status = response.status;
-    error.meta = payload.error || payload;
-    throw error;
-  }
-
-  return payload;
-}
-
-async function graphPost(pathname, params = {}, accessToken = token()) {
-  if (!accessToken) {
-    const error = new Error("META_ACCESS_TOKEN mancante nel file .env");
-    error.status = 400;
-    throw error;
-  }
-
-  const url = new URL(`${GRAPH_BASE}/${pathname.replace(/^\//, "")}`);
-  const body = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== "") {
-      body.set(key, typeof value === "object" ? JSON.stringify(value) : String(value));
-    }
-  });
-  body.set("access_token", accessToken);
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body
-  });
-  const payload = await response.json();
-
-  if (!response.ok || payload.error) {
-    const error = new Error(payload.error?.message || `Errore Meta API ${response.status}`);
-    error.status = response.status;
-    error.meta = payload.error || payload;
-    throw error;
-  }
-
-  return payload;
-}
-
-function pageTokenForId(pageId) {
-  const page = parseNamedIds(env.META_FACEBOOK_PAGES).find((item) => item.id === pageId);
-  if (!page) return null;
-  return env[`META_PAGE_ACCESS_TOKEN_${page.label}`] || null;
-}
-
-function pageTokenForInstagramId(instagramId) {
-  const instagram = parseNamedIds(env.META_INSTAGRAM_ACCOUNTS).find((item) => item.id === instagramId);
-  if (!instagram) return null;
-  return env[`META_PAGE_ACCESS_TOKEN_${instagram.label}`] || null;
-}
-
-function pageForInstagramId(instagramId) {
-  const instagram = parseNamedIds(env.META_INSTAGRAM_ACCOUNTS).find((item) => item.id === instagramId);
-  if (!instagram) return null;
-  return parseNamedIds(env.META_FACEBOOK_PAGES).find((item) => item.label === instagram.label) || null;
-}
-
-async function dynamicPageTokenForId(pageId) {
-  if (!pageId) return null;
-  try {
-    const page = await graph(`/${pageId}`, { fields: "access_token" });
-    return page.access_token || null;
-  } catch {
-    return null;
-  }
-}
-
-function configuredSources() {
-  return {
-    facebookPages: parseNamedIds(env.META_FACEBOOK_PAGES),
-    instagramAccounts: parseNamedIds(env.META_INSTAGRAM_ACCOUNTS)
-  };
-}
-
-function dedupeById(items) {
-  return Array.from(new Map(items.filter((item) => item.id).map((item) => [item.id, item])).values());
-}
-
-function normalizeBusinessPage(page, sourceType) {
-  return {
-    id: page.id,
-    label: page.name || page.username || page.id,
-    name: page.name || page.username || "",
-    sourceType
-  };
-}
-
-function normalizeBusinessInstagram(page, sourceType) {
-  const instagram = page.instagram_business_account;
-  if (!instagram?.id) return null;
-  return {
-    id: instagram.id,
-    label: instagram.username || instagram.name || page.name || instagram.id,
-    name: instagram.name || instagram.username || "",
-    pageId: page.id,
-    pageName: page.name || "",
-    sourceType
-  };
-}
-
-async function listBusinessPages(businessId, edge, sourceType) {
-  const payload = await graph(`/${businessId}/${edge}`, {
-    fields: "id,name,username,instagram_business_account{id,username,name}",
-    limit: "100"
-  });
-  const pages = payload.data || [];
-  return {
-    facebookPages: pages.map((page) => normalizeBusinessPage(page, sourceType)),
-    instagramAccounts: pages.map((page) => normalizeBusinessInstagram(page, sourceType)).filter(Boolean)
-  };
-}
-
-async function listSourcesForAdAccount(accountId) {
-  const fallback = configuredSources();
-  if (!accountId) return { ...fallback, mode: "configured", note: "Account pubblicitario non selezionato." };
-
-  try {
-    const account = await graph(`/${accountId}`, { fields: "id,name,business{id,name}" });
-    const businessId = account.business?.id;
-    if (!businessId) {
-      return { ...fallback, mode: "configured", note: "Questo account non espone un Business Manager collegato: uso le fonti configurate." };
-    }
-
-    const collected = { facebookPages: [], instagramAccounts: [] };
-    const errors = [];
-    for (const [edge, sourceType] of [["owned_pages", "business_owned"], ["client_pages", "business_client"]]) {
-      try {
-        const sources = await listBusinessPages(businessId, edge, sourceType);
-        collected.facebookPages.push(...sources.facebookPages);
-        collected.instagramAccounts.push(...sources.instagramAccounts);
-      } catch (error) {
-        errors.push(`${edge}: ${error.message}`);
-      }
-    }
-
-    const facebookPages = dedupeById(collected.facebookPages);
-    const instagramAccounts = dedupeById(collected.instagramAccounts);
-    if (!facebookPages.length && !instagramAccounts.length) {
-      return {
-        ...fallback,
-        mode: "configured",
-        note: errors.length ? `Meta non ha restituito pagine dal business: ${errors.join(" | ")}` : "Nessuna pagina business trovata: uso le fonti configurate."
-      };
-    }
-
-    return {
-      facebookPages,
-      instagramAccounts,
-      mode: "business",
-      business: account.business,
-      note: `Fonti prese dal Business Manager ${account.business.name || businessId}.`
-    };
-  } catch (error) {
-    return { ...fallback, mode: "configured", note: `Non riesco a leggere il business dell'account: ${error.message}` };
-  }
-}
-
 async function readJsonBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -238,81 +55,165 @@ async function readJsonBody(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
-async function listAdAccounts() {
-  const payload = await graph("/me/adaccounts", {
-    fields: "id,account_id,name,account_status,currency,timezone_name"
-  });
-  return payload.data || [];
-}
-
-async function findRule(accountId, ruleId) {
-  if (!accountId || !ruleId) return null;
-  const payload = await graph(`/${accountId}/adrules_library`, {
-    fields: "id,name,evaluation_spec,execution_spec,schedule_spec,status,created_time,updated_time",
-    limit: "100"
-  });
-  return (payload.data || []).find((rule) => rule.id === ruleId) || null;
-}
-
-function parseMetaJson(value, fallback) {
-  if (!value) return fallback;
-  if (typeof value === "object") return structuredClone(value);
-  try {
-    return JSON.parse(value);
-  } catch {
-    return fallback;
-  }
-}
-
-function mergeAdIdsIntoEvaluationSpec(evaluationSpec, adIds) {
-  const spec = parseMetaJson(evaluationSpec, {});
-  const filters = Array.isArray(spec.filters) ? spec.filters : [];
-  const adIdFilter = filters.find((filter) => filter.field === "ad.id" && filter.operator === "IN" && Array.isArray(filter.value));
-
-  if (!adIdFilter) {
-    return {
-      updatedSpec: spec,
-      changed: false,
-      message: "Regola non aggiornata: questa regola non contiene una lista di ID inserzione modificabile."
-    };
-  }
-
-  const existing = new Set(adIdFilter.value.map(String));
-  adIds.map(String).forEach((id) => existing.add(id));
-  const nextValue = Array.from(existing);
-  const changed = nextValue.length !== adIdFilter.value.length;
-  adIdFilter.value = nextValue;
-
-  return {
-    updatedSpec: spec,
-    changed,
-    message: changed
-      ? "Regola applicata: ho aggiunto questa inserzione alla lista della regola."
-      : "Regola gia applicata: questa inserzione era gia nella lista della regola."
-  };
-}
-
-async function applyRuleToCreatedAds(accountId, ruleId, adIds) {
-  if (!ruleId || !adIds.length) {
-    return { applied: false, message: "Nessuna regola selezionata." };
-  }
-
-  const rule = await findRule(accountId, ruleId);
-  if (!rule) {
-    return { applied: false, message: "Regola non trovata nell'account pubblicitario selezionato." };
-  }
-
-  const merge = mergeAdIdsIntoEvaluationSpec(rule.evaluation_spec, adIds);
-  if (!merge.changed) {
-    return { applied: false, message: merge.message };
-  }
-
-  await graphPost(`/${ruleId}`, { evaluation_spec: merge.updatedSpec });
-  return { applied: true, message: merge.message };
+function checkCronAuth(req, url) {
+  if (!CRON_SECRET) return true;
+  const authHeader = req.headers.authorization || "";
+  if (authHeader === `Bearer ${CRON_SECRET}`) return true;
+  if (url.searchParams.get("secret") === CRON_SECRET) return true;
+  return false;
 }
 
 async function handleApi(req, res, url) {
   try {
+    // -------------------------------------------------------------------------
+    // CRON ENDPOINT (for Render.com free tier via Cron-job.org or GitHub Actions)
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/cron/check-and-sponsor" && (req.method === "POST" || req.method === "GET")) {
+      if (!checkCronAuth(req, url)) {
+        return json(res, 401, { error: "Non autorizzato: token CRON_SECRET errato o mancante." });
+      }
+      const forceAll = url.searchParams.get("force") === "true";
+      const result = await engine.runAllDueAutomations("EXTERNAL_CRON", forceAll);
+      return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result });
+    }
+
+    // -------------------------------------------------------------------------
+    // SYSTEM STATUS & HEALTH
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/status" && req.method === "GET") {
+      const automations = await db.getAutomations();
+      const tokenHealth = await metaService.checkTokenHealth();
+      return json(res, 200, {
+        dbType: db.getDbType(),
+        totalAutomations: automations.length,
+        activeAutomations: automations.filter(a => a.enabled).length,
+        cronSecretConfigured: Boolean(CRON_SECRET),
+        appId: env.META_APP_ID || null,
+        hasAppSecret: Boolean(env.META_APP_SECRET),
+        hasToken: Boolean(metaService.token()),
+        tokenHealth,
+        uptimeSeconds: Math.round(process.uptime()),
+        nodeVersion: process.version
+      });
+    }
+
+    // -------------------------------------------------------------------------
+    // MANUAL TOKEN SAVE
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/meta/save-token" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!body.token) return json(res, 400, { error: "Token non fornito" });
+      const cleanToken = body.token.trim();
+      await db.setSetting("META_ACCESS_TOKEN", cleanToken);
+      metaService.updateConfig({ META_ACCESS_TOKEN: cleanToken });
+      const health = await metaService.checkTokenHealth();
+      return json(res, 200, { ok: true, health });
+    }
+
+    // -------------------------------------------------------------------------
+    // AUTOMATIONS CRUD & EXECUTION
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/automations" && req.method === "GET") {
+      const list = await db.getAutomations();
+      return json(res, 200, { data: list });
+    }
+
+    if (url.pathname === "/api/automations" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!body.name || !body.platform || !body.source_id || !body.ad_account_id || !body.campaign_id || !body.adset_id) {
+        return json(res, 400, { error: "Campi obbligatori mancanti: nome, piattaforma, fonte, account, campagna, gruppo." });
+      }
+
+      const item = {
+        id: body.id || `auto_${Date.now()}_${crypto.randomBytes(4).toString("hex")}`,
+        name: body.name.trim(),
+        enabled: body.enabled ?? true,
+        platform: body.platform,
+        source_id: body.source_id,
+        source_name: body.source_name || "",
+        page_id: body.page_id || "",
+        ad_account_id: body.ad_account_id,
+        campaign_id: body.campaign_id,
+        campaign_name: body.campaign_name || "",
+        adset_id: body.adset_id,
+        adset_name: body.adset_name || "",
+        rule_id: body.rule_id || "",
+        rule_name: body.rule_name || "",
+        ad_name_pattern: body.ad_name_pattern || "ADV - {platform} - {post}",
+        ad_status: body.ad_status || "PAUSED",
+        check_interval_hours: Number(body.check_interval_hours) || 12,
+        filter_keywords: body.filter_keywords || "",
+        created_at: new Date().toISOString()
+      };
+
+      const saved = await db.saveAutomation(item);
+      return json(res, 201, { ok: true, data: saved });
+    }
+
+    const autoMatch = url.pathname.match(/^\/api\/automations\/([a-zA-Z0-9_\-]+)(\/.*)?$/);
+    if (autoMatch) {
+      const autoId = autoMatch[1];
+      const subAction = autoMatch[2];
+
+      if (!subAction && req.method === "GET") {
+        const item = await db.getAutomation(autoId);
+        if (!item) return json(res, 404, { error: "Automazione non trovata" });
+        return json(res, 200, { data: item });
+      }
+
+      if (!subAction && req.method === "PUT") {
+        const body = await readJsonBody(req);
+        const existing = await db.getAutomation(autoId);
+        if (!existing) return json(res, 404, { error: "Automazione non trovata" });
+
+        const updated = await db.saveAutomation({
+          ...existing,
+          ...body,
+          id: autoId
+        });
+        return json(res, 200, { ok: true, data: updated });
+      }
+
+      if (!subAction && req.method === "DELETE") {
+        await db.deleteAutomation(autoId);
+        return json(res, 200, { ok: true });
+      }
+
+      if (subAction === "/toggle" && req.method === "POST") {
+        const body = await readJsonBody(req);
+        const item = await db.toggleAutomation(autoId, Boolean(body.enabled));
+        return json(res, 200, { ok: true, data: item });
+      }
+
+      if (subAction === "/run" && req.method === "POST") {
+        const report = await engine.runSingleAutomation(autoId, "MANUAL", true);
+        return json(res, 200, { ok: true, report });
+      }
+    }
+
+    if (url.pathname === "/api/automations/run-all" && req.method === "POST") {
+      const result = await engine.runAllDueAutomations("MANUAL_RUN_ALL", true);
+      return json(res, 200, { ok: true, result });
+    }
+
+    // -------------------------------------------------------------------------
+    // LOGS & PROCESSED POSTS
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/logs" && req.method === "GET") {
+      const limit = Number(url.searchParams.get("limit") || 50);
+      const logs = await db.getLogs(limit);
+      return json(res, 200, { data: logs });
+    }
+
+    if (url.pathname === "/api/processed-posts" && req.method === "GET") {
+      const limit = Number(url.searchParams.get("limit") || 50);
+      const posts = await db.getProcessedPosts(limit);
+      return json(res, 200, { data: posts });
+    }
+
+    // -------------------------------------------------------------------------
+    // META GRAPH API PROXIES (Manual Bulk Creation & Selectors)
+    // -------------------------------------------------------------------------
     if (url.pathname === "/api/meta/create-ads" && req.method === "POST") {
       const body = await readJsonBody(req);
       const results = [];
@@ -327,18 +228,32 @@ async function handleApi(req, res, url) {
           if (post.platform === "Facebook") {
             creativeParams.object_story_id = post.sourcePostId;
           } else {
-            const page = pageForInstagramId(post.instagramAccountId);
+            const page = metaService.pageForInstagramId(post.instagramAccountId);
             creativeParams.object_id = page?.id || post.pageId;
             creativeParams.instagram_user_id = post.instagramAccountId;
             creativeParams.source_instagram_media_id = post.sourcePostId;
           }
 
-          const creative = await graphPost(`/${body.adAccountId}/adcreatives`, creativeParams);
-          const ad = await graphPost(`/${body.adAccountId}/ads`, {
+          const creative = await metaService.graphPost(`/${body.adAccountId}/adcreatives`, creativeParams);
+          const ad = await metaService.graphPost(`/${body.adAccountId}/ads`, {
             name: post.adName,
             adset_id: post.adsetId,
             creative: { creative_id: creative.id },
             status: body.status || "PAUSED"
+          });
+
+          await db.recordProcessedPost({
+            automation_id: null,
+            platform: post.platform,
+            source_id: post.platform === "Facebook" ? post.pageId : post.instagramAccountId,
+            post_id: post.sourcePostId,
+            post_permalink: post.permalink || "",
+            post_message: post.adName,
+            ad_id: ad.id,
+            creative_id: creative.id,
+            ad_name: post.adName,
+            rule_applied: Boolean(post.ruleId),
+            status: "SUCCESS"
           });
 
           results.push({
@@ -372,7 +287,7 @@ async function handleApi(req, res, url) {
 
       for (const [ruleId, adIds] of Object.entries(createdByRule)) {
         try {
-          const ruleResult = await applyRuleToCreatedAds(body.adAccountId, ruleId, adIds);
+          const ruleResult = await metaService.applyRuleToCreatedAds(body.adAccountId, ruleId, adIds);
           results
             .filter((result) => result.ok && result.ruleId === ruleId)
             .forEach((result) => {
@@ -397,14 +312,14 @@ async function handleApi(req, res, url) {
       let adAccounts = [];
       let adAccountsError = null;
       try {
-        adAccounts = await listAdAccounts();
+        adAccounts = await metaService.listAdAccounts();
       } catch (error) {
         adAccountsError = error.message;
       }
       return json(res, 200, {
-        apiVersion: API_VERSION,
+        apiVersion: metaService.apiVersion,
         loginConfigId: env.META_LOGIN_CONFIG_ID || null,
-        ...configuredSources(),
+        ...metaService.configuredSources(),
         adAccounts,
         adAccountsError
       });
@@ -412,71 +327,128 @@ async function handleApi(req, res, url) {
 
     if (url.pathname === "/api/meta/sources") {
       const accountId = url.searchParams.get("accountId");
-      return json(res, 200, await listSourcesForAdAccount(accountId));
+      return json(res, 200, await metaService.listSourcesForAdAccount(accountId));
     }
 
     if (url.pathname === "/api/meta/adaccounts") {
-      return json(res, 200, { data: await listAdAccounts() });
+      return json(res, 200, { data: await metaService.listAdAccounts() });
     }
 
     if (url.pathname === "/api/meta/campaigns") {
       const accountId = url.searchParams.get("accountId");
-      const payload = await graph(`/${accountId}/campaigns`, {
-        fields: "id,name,status,effective_status,objective,created_time,updated_time",
-        limit: "100"
-      });
-      return json(res, 200, payload);
+      return json(res, 200, await metaService.listCampaigns(accountId));
     }
 
     if (url.pathname === "/api/meta/adsets") {
       const accountId = url.searchParams.get("accountId");
       const campaignId = url.searchParams.get("campaignId");
-      const filtering = campaignId ? JSON.stringify([{ field: "campaign.id", operator: "EQUAL", value: campaignId }]) : "";
-      const payload = await graph(`/${accountId}/adsets`, {
-        fields: "id,name,status,effective_status,campaign_id,daily_budget,lifetime_budget,billing_event,optimization_goal",
-        filtering,
-        limit: "100"
-      });
-      return json(res, 200, payload);
+      return json(res, 200, await metaService.listAdsets(accountId, campaignId));
     }
 
     if (url.pathname === "/api/meta/rules") {
       const accountId = url.searchParams.get("accountId");
-      const payload = await graph(`/${accountId}/adrules_library`, {
-        fields: "id,name,evaluation_spec,execution_spec,schedule_spec,status,created_time,updated_time",
-        limit: "100"
-      });
-      return json(res, 200, payload);
+      return json(res, 200, await metaService.listRules(accountId));
     }
 
     if (url.pathname === "/api/meta/facebook-posts") {
       const pageId = url.searchParams.get("pageId");
-      const pageAccessToken = pageTokenForId(pageId) || await dynamicPageTokenForId(pageId);
-      const payload = await graph(`/${pageId}/posts`, {
-        fields: "id,message,permalink_url,created_time,full_picture,status_type,attachments{media_type,title,description,unshimmed_url}",
-        limit: "50"
-      }, pageAccessToken || token());
-      return json(res, 200, payload);
+      const limit = Number(url.searchParams.get("limit") || 50);
+      return json(res, 200, await metaService.getFacebookPosts(pageId, limit));
     }
 
     if (url.pathname === "/api/meta/instagram-media") {
       const instagramId = url.searchParams.get("instagramId");
       const pageId = url.searchParams.get("pageId");
-      const pageAccessToken = pageTokenForInstagramId(instagramId) || await dynamicPageTokenForId(pageId);
-      const payload = await graph(`/${instagramId}/media`, {
-        fields: "id,caption,media_type,media_url,permalink,timestamp,thumbnail_url",
-        limit: "50"
-      }, pageAccessToken || token());
-      return json(res, 200, payload);
+      const limit = Number(url.searchParams.get("limit") || 50);
+      return json(res, 200, await metaService.getInstagramMedia(instagramId, pageId, limit));
     }
 
     return json(res, 404, { error: "Endpoint non trovato" });
   } catch (error) {
+    console.error("[API Error]", error);
     return json(res, error.status || 500, {
       error: error.message,
       meta: error.meta || null
     });
   }
+}
+
+// -----------------------------------------------------------------------------
+// OAUTH FLOW (Facebook Login)
+// -----------------------------------------------------------------------------
+async function handleOAuth(req, res, url) {
+  const appId = env.META_APP_ID || "1487594375621582";
+  const appSecret = env.META_APP_SECRET || "c5bdacb60e9268b584c504403eb452d1";
+  const redirectUri = env.META_LOGIN_REDIRECT_URI || `http://${req.headers.host}/auth/callback`;
+
+  if (url.pathname === "/auth/facebook") {
+    const oauthUrl = new URL(`https://www.facebook.com/${metaService.apiVersion}/dialog/oauth`);
+    oauthUrl.searchParams.set("client_id", appId);
+    oauthUrl.searchParams.set("redirect_uri", redirectUri);
+    oauthUrl.searchParams.set("scope", env.META_LOGIN_SCOPE || "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_basic");
+    oauthUrl.searchParams.set("response_type", "code");
+    res.writeHead(302, { Location: oauthUrl.toString() });
+    res.end();
+    return true;
+  }
+
+  if (url.pathname === "/auth/callback") {
+    const code = url.searchParams.get("code");
+    const error = url.searchParams.get("error_description") || url.searchParams.get("error");
+    if (error || !code) {
+      res.writeHead(302, { Location: `/?login_error=${encodeURIComponent(error || "Codice mancante")}` });
+      res.end();
+      return true;
+    }
+
+    try {
+      const tokenUrl = new URL(`https://graph.facebook.com/${metaService.apiVersion}/oauth/access_token`);
+      tokenUrl.searchParams.set("client_id", appId);
+      tokenUrl.searchParams.set("client_secret", appSecret);
+      tokenUrl.searchParams.set("redirect_uri", redirectUri);
+      tokenUrl.searchParams.set("code", code);
+
+      const tokenRes = await fetch(tokenUrl);
+      const tokenData = await tokenRes.json();
+
+      if (!tokenRes.ok || tokenData.error) {
+        throw new Error(tokenData.error?.message || "Impossibile scambiare il codice");
+      }
+
+      // Exchange short-lived token for 60-day Long-Lived Token
+      let finalToken = tokenData.access_token;
+      try {
+        const exchangeUrl = new URL(`https://graph.facebook.com/${metaService.apiVersion}/oauth/access_token`);
+        exchangeUrl.searchParams.set("grant_type", "fb_exchange_token");
+        exchangeUrl.searchParams.set("client_id", appId);
+        exchangeUrl.searchParams.set("client_secret", appSecret);
+        exchangeUrl.searchParams.set("fb_exchange_token", tokenData.access_token);
+
+        const exchangeRes = await fetch(exchangeUrl);
+        const exchangeData = await exchangeRes.json();
+        if (exchangeData.access_token) {
+          finalToken = exchangeData.access_token;
+          console.log("[Auth] Token esteso con successo a 60 giorni");
+        }
+      } catch (exErr) {
+        console.warn("[Auth] Estensione token fallita, uso token standard:", exErr.message);
+      }
+
+      await db.setSetting("META_ACCESS_TOKEN", finalToken);
+      metaService.updateConfig({ META_ACCESS_TOKEN: finalToken });
+      console.log("[Auth] Nuovo token Meta memorizzato nel database!");
+
+      res.writeHead(302, { Location: "/?login=ok" });
+      res.end();
+    } catch (authErr) {
+      console.error("[Auth Error]", authErr);
+      res.writeHead(302, { Location: `/?login_error=${encodeURIComponent(authErr.message)}` });
+      res.end();
+    }
+    return true;
+  }
+
+  return false;
 }
 
 function serveStatic(req, res, url) {
@@ -505,17 +477,45 @@ function serveStatic(req, res, url) {
   });
 }
 
-const server = http.createServer((req, res) => {
+const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
+  if (url.pathname.startsWith("/auth/")) {
+    const handled = await handleOAuth(req, res, url);
+    if (handled) return;
+  }
+
   if (url.pathname.startsWith("/api/")) {
-    handleApi(req, res, url);
+    await handleApi(req, res, url);
     return;
   }
 
   serveStatic(req, res, url);
 });
 
-server.listen(PORT, () => {
-  console.log(`Post Inserter running on http://localhost:${PORT}`);
-});
+async function start() {
+  try {
+    await db.initDb(env.DATABASE_URL);
+
+    // If no access token in env, check DB
+    if (!metaService.token()) {
+      const savedToken = await db.getSetting("META_ACCESS_TOKEN");
+      if (savedToken) {
+        metaService.updateConfig({ META_ACCESS_TOKEN: savedToken });
+        console.log("[Auth] Token Meta caricato dal database persistente");
+      }
+    }
+
+    engine.startInternalScheduler();
+
+    server.listen(PORT, () => {
+      console.log(`AutoSponsorAds attivo su http://localhost:${PORT}`);
+      console.log(`Cron Webhook disponibile su: http://localhost:${PORT}/api/cron/check-and-sponsor`);
+    });
+  } catch (err) {
+    console.error("Errore critico durante l'avvio:", err);
+    process.exit(1);
+  }
+}
+
+start();

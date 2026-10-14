@@ -1,50 +1,157 @@
-const STORAGE_KEY = "post-inserter-state-v6";
+const STORAGE_KEY = "autosponsor-ads-state-v1";
 const DEFAULT_IMAGE = "assets/default-creative.svg";
 
-const seedState = {
-  target: {
-    adAccountId: "",
-    campaignId: "",
-    adsetId: "",
-    ruleId: "",
-    adNamePattern: "ADV - {platform} - {post}"
-  },
-  filters: {
-    account: "",
-    campaign: "",
-    adset: "",
-    rule: ""
-  },
-  createActive: false,
-  activePlatform: "Facebook",
-  sourceId: "",
-  selectedIds: [],
-  queue: [],
-  adAccounts: [],
-  campaigns: [],
-  adsets: [],
-  rules: [],
-  facebookPages: [],
-  instagramAccounts: [],
-  sourcesMode: "configured",
-  sourcesNote: "",
-  publishedPosts: [],
-  postsError: "",
-  loading: {
-    config: false,
-    campaigns: false,
-    adsets: false,
-    rules: false,
-    posts: false,
-    creating: false
-  },
-  results: []
+// -----------------------------------------------------------------------------
+// State Management
+// -----------------------------------------------------------------------------
+const state = {
+  // Navigation
+  activeTab: "automationsView",
+
+  // Automations
+  automations: [],
+  systemStatus: null,
+  logs: [],
+  processedPosts: [],
+
+  // Modal Editing
+  editingAutoId: null,
+  modalSelectedPlatform: "Facebook",
+
+  // Manual Bulk Sponsor State (Preserved)
+  manual: {
+    target: {
+      adAccountId: "",
+      campaignId: "",
+      adsetId: "",
+      ruleId: "",
+      adNamePattern: "ADV - {platform} - {post}"
+    },
+    filters: {
+      account: "",
+      campaign: "",
+      adset: "",
+      rule: ""
+    },
+    createActive: false,
+    activePlatform: "Facebook",
+    sourceId: "",
+    selectedIds: [],
+    queue: [],
+    adAccounts: [],
+    campaigns: [],
+    adsets: [],
+    rules: [],
+    facebookPages: [],
+    instagramAccounts: [],
+    sourcesMode: "configured",
+    sourcesNote: "",
+    publishedPosts: [],
+    postsError: "",
+    loading: {
+      config: false,
+      campaigns: false,
+      adsets: false,
+      rules: false,
+      posts: false,
+      creating: false
+    },
+    results: []
+  }
 };
 
-let state = structuredClone(seedState);
 let visiblePostIds = [];
 
-const els = {
+// -----------------------------------------------------------------------------
+// API Helper
+// -----------------------------------------------------------------------------
+async function api(path, options = {}) {
+  const response = await fetch(path, {
+    headers: { "Content-Type": "application/json", ...options.headers },
+    ...options
+  });
+  const payload = await response.json();
+  if (!response.ok || payload.error) {
+    const errorMsg = payload.error?.message || payload.error || `Errore HTTP ${response.status}`;
+    const err = new Error(errorMsg);
+    err.meta = payload.meta || payload;
+    throw err;
+  }
+  return payload;
+}
+
+// -----------------------------------------------------------------------------
+// DOM Elements
+// -----------------------------------------------------------------------------
+const dom = {
+  // Navigation
+  navTabs: document.querySelectorAll(".nav-tab"),
+  appViews: document.querySelectorAll(".app-view"),
+  badgeActiveCount: document.getElementById("badgeActiveCount"),
+  globalRunBtn: document.getElementById("globalRunBtn"),
+  globalRunSpinner: document.getElementById("globalRunSpinner"),
+  globalRunText: document.getElementById("globalRunText"),
+  openNewAutoModalBtn: document.getElementById("openNewAutoModalBtn"),
+  createAutomationBannerBtn: document.getElementById("createAutomationBannerBtn"),
+  emptyCreateBtn: document.getElementById("emptyCreateBtn"),
+  refreshAutomationsBtn: document.getElementById("refreshAutomationsBtn"),
+
+  // KPIs
+  kpiActiveAutomations: document.getElementById("kpiActiveAutomations"),
+  kpiTotalAutomations: document.getElementById("kpiTotalAutomations"),
+  kpiProcessedPosts: document.getElementById("kpiProcessedPosts"),
+  kpiDbType: document.getElementById("kpiDbType"),
+  kpiDbStatus: document.getElementById("kpiDbStatus"),
+  kpiMetaStatus: document.getElementById("kpiMetaStatus"),
+  kpiMetaIndicator: document.getElementById("kpiMetaIndicator"),
+
+  // Automations Grid
+  automationsGrid: document.getElementById("automationsGrid"),
+  automationsEmptyState: document.getElementById("automationsEmptyState"),
+
+  // Modal Form
+  automationModal: document.getElementById("automationModal"),
+  automationForm: document.getElementById("automationForm"),
+  modalTitle: document.getElementById("modalTitle"),
+  closeModalBtn: document.getElementById("closeModalBtn"),
+  cancelModalBtn: document.getElementById("cancelModalBtn"),
+  autoFormId: document.getElementById("autoFormId"),
+  autoNameInput: document.getElementById("autoNameInput"),
+  btnPlatformFB: document.getElementById("btnPlatformFB"),
+  btnPlatformIG: document.getElementById("btnPlatformIG"),
+  autoSourceSelect: document.getElementById("autoSourceSelect"),
+  autoAdAccountSelect: document.getElementById("autoAdAccountSelect"),
+  autoCampaignSelect: document.getElementById("autoCampaignSelect"),
+  autoAdsetSelect: document.getElementById("autoAdsetSelect"),
+  autoRuleSelect: document.getElementById("autoRuleSelect"),
+  autoIntervalSelect: document.getElementById("autoIntervalSelect"),
+  autoAdStatusSelect: document.getElementById("autoAdStatusSelect"),
+  autoNamingPattern: document.getElementById("autoNamingPattern"),
+  autoFilterKeywords: document.getElementById("autoFilterKeywords"),
+
+  // Logs & Tables
+  refreshLogsBtn: document.getElementById("refreshLogsBtn"),
+  runsTableBody: document.getElementById("runsTableBody"),
+  postsTableBody: document.getElementById("postsTableBody"),
+  logsCountBadge: document.getElementById("logsCountBadge"),
+  postsCountBadge: document.getElementById("postsCountBadge"),
+
+  // Guide & Diagnostics
+  checkMetaHealthBtn: document.getElementById("checkMetaHealthBtn"),
+  diagTokenStatus: document.getElementById("diagTokenStatus"),
+  diagTokenUser: document.getElementById("diagTokenUser"),
+  diagDbType: document.getElementById("diagDbType"),
+  cronWebhookUrl: document.getElementById("cronWebhookUrl"),
+  cronAuthHeader: document.getElementById("cronAuthHeader"),
+  copyCronUrlBtn: document.getElementById("copyCronUrlBtn"),
+  copyCronHeaderBtn: document.getElementById("copyCronHeaderBtn"),
+
+  // Reports
+  runReportDialog: document.getElementById("runReportDialog"),
+  reportTitle: document.getElementById("reportTitle"),
+  reportContent: document.getElementById("reportContent"),
+
+  // Manual Bulk Sponsor Elements
   summaryAccount: document.querySelector("#summaryAccount"),
   summaryCampaign: document.querySelector("#summaryCampaign"),
   summaryAdset: document.querySelector("#summaryAdset"),
@@ -65,684 +172,1231 @@ const els = {
   pathCampaign: document.querySelector("#pathCampaign"),
   pathAdset: document.querySelector("#pathAdset"),
   pathRule: document.querySelector("#pathRule"),
+  refreshTargetBtn: document.querySelector("#refreshTargetBtn"),
   sourceSelect: document.querySelector("#sourceSelect"),
   sourceNote: document.querySelector("#sourceNote"),
   searchInput: document.querySelector("#searchInput"),
+  selectVisibleBtn: document.querySelector("#selectVisibleBtn"),
+  queueSelectedBtn: document.querySelector("#queueSelectedBtn"),
   postLibrary: document.querySelector("#postLibrary"),
   queueList: document.querySelector("#queueList"),
-  resultCard: document.querySelector("#resultCard"),
-  resultList: document.querySelector("#resultList"),
-  exportDialog: document.querySelector("#exportDialog"),
-  exportOutput: document.querySelector("#exportOutput"),
+  clearQueueBtn: document.querySelector("#clearQueueBtn"),
+  renameQueueBtn: document.querySelector("#renameQueueBtn"),
   activeStatusCheckbox: document.querySelector("#activeStatusCheckbox"),
   createAdsBtn: document.querySelector("#createAdsBtn"),
-  createAdsBtnBottom: document.querySelector("#createAdsBtnBottom")
+  createAdsBtnBottom: document.querySelector("#createAdsBtnBottom"),
+  resultCard: document.querySelector("#resultCard"),
+  resultList: document.querySelector("#resultList"),
+  exportBtn: document.querySelector("#exportBtn"),
+  exportDialog: document.querySelector("#exportDialog"),
+  exportOutput: document.querySelector("#exportOutput"),
+  copyExportBtn: document.querySelector("#copyExportBtn")
 };
 
-async function api(path, options) {
-  const response = await fetch(path, options);
-  const payload = await response.json();
-  if (!response.ok || payload.error) {
-    throw new Error(payload.error || "Errore API locale");
-  }
-  return payload;
+// -----------------------------------------------------------------------------
+// Toast & Banner Notification
+// -----------------------------------------------------------------------------
+function showBanner(text, type = "info") {
+  const banner = document.getElementById("globalBanner");
+  const bannerText = document.getElementById("globalBannerText");
+  if (!banner || !bannerText) return;
+
+  bannerText.textContent = text;
+  banner.className = `banner banner-${type}`;
+  banner.hidden = false;
+
+  setTimeout(() => {
+    banner.hidden = true;
+  }, 6000);
 }
 
-async function loadConfig() {
-  setLoading("config", true);
-  render();
+document.getElementById("globalBannerClose")?.addEventListener("click", () => {
+  document.getElementById("globalBanner").hidden = true;
+});
 
+// -----------------------------------------------------------------------------
+// Tab Switching
+// -----------------------------------------------------------------------------
+function setupTabs() {
+  dom.navTabs.forEach(tab => {
+    tab.addEventListener("click", () => {
+      const targetViewId = tab.getAttribute("data-tab");
+      state.activeTab = targetViewId;
+
+      dom.navTabs.forEach(t => {
+        t.classList.toggle("active", t === tab);
+        t.setAttribute("aria-selected", t === tab ? "true" : "false");
+      });
+
+      dom.appViews.forEach(view => {
+        const isTarget = view.id === targetViewId;
+        view.hidden = !isTarget;
+        if (isTarget) view.classList.add("active");
+        else view.classList.remove("active");
+      });
+
+      if (targetViewId === "logsView") {
+        loadLogs();
+      } else if (targetViewId === "guideView") {
+        updateGuideView();
+      }
+    });
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Automations Controller
+// -----------------------------------------------------------------------------
+async function loadAutomations() {
   try {
-    const config = await api("/api/meta/config");
-    state.adAccounts = config.adAccounts || [];
-    state.facebookPages = config.facebookPages || [];
-    state.instagramAccounts = config.instagramAccounts || [];
-    state.sourcesMode = "configured";
-    state.sourcesNote = "Fonti configurate manualmente.";
-
-    if (!state.target.adAccountId && state.adAccounts.length) state.target.adAccountId = state.adAccounts[0].id;
-    if (!state.sourceId) state.sourceId = state.facebookPages[0]?.id || state.instagramAccounts[0]?.id || "";
-
-    if (config.adAccountsError) showEmpty(els.postLibrary, `Account pubblicitari non disponibili: ${config.adAccountsError}`);
-
-    render();
-    await loadSources();
-    await Promise.all([loadCampaigns(), loadRules(), loadPosts()]);
-  } catch (error) {
-    showEmpty(els.postLibrary, `Non riesco a leggere Meta: ${error.message}`);
-  } finally {
-    setLoading("config", false);
-    render();
+    const res = await api("/api/automations");
+    state.automations = res.data || [];
+    renderAutomationsGrid();
+    updateKpis();
+  } catch (err) {
+    console.error("Errore caricamento automazioni:", err);
+    showBanner(`Errore caricamento automazioni: ${err.message}`, "danger");
   }
 }
 
-async function loadSources() {
-  if (!state.target.adAccountId) return;
-  setLoading("posts", true);
-  render();
+function renderAutomationsGrid() {
+  const grid = dom.automationsGrid;
+  const empty = dom.automationsEmptyState;
+  
+  // Clear existing cards (except empty state element)
+  Array.from(grid.querySelectorAll(".auto-card")).forEach(c => c.remove());
 
-  try {
-    const payload = await api(`/api/meta/sources?accountId=${encodeURIComponent(state.target.adAccountId)}`);
-    state.facebookPages = payload.facebookPages || [];
-    state.instagramAccounts = payload.instagramAccounts || [];
-    state.sourcesMode = payload.mode || "configured";
-    state.sourcesNote = payload.note || "";
-    state.sourceId = "";
-    state.selectedIds = [];
-  } catch (error) {
-    state.sourcesNote = `Fonti non aggiornate: ${error.message}`;
-  } finally {
-    setLoading("posts", false);
-    render();
+  if (!state.automations.length) {
+    empty.style.display = "block";
+    return;
   }
+  empty.style.display = "none";
+
+  state.automations.forEach(item => {
+    const card = document.createElement("article");
+    card.className = `auto-card ${item.enabled ? "" : "disabled"}`;
+    card.id = `auto-card-${item.id}`;
+
+    const isFB = item.platform === "Facebook";
+    const platformClass = isFB ? "facebook" : "instagram";
+    const platformIcon = isFB ? "📘" : "📸";
+
+    const lastChecked = item.last_checked_at 
+      ? new Date(item.last_checked_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" })
+      : "Mai eseguito";
+
+    let statusBadgeClass = "badge-tag";
+    if (item.last_run_status === "SUCCESS") statusBadgeClass += " success";
+    else if (item.last_run_status === "ERROR") statusBadgeClass += " error";
+    else if (item.last_run_status === "WARNING") statusBadgeClass += " warning";
+
+    card.innerHTML = `
+      <div class="auto-card-header">
+        <div class="auto-card-title-group">
+          <span class="auto-platform-tag ${platformClass}">
+            ${platformIcon} ${item.platform}
+          </span>
+          <h3 class="auto-card-title">${escapeHtml(item.name)}</h3>
+        </div>
+        <label class="switch" title="${item.enabled ? 'Attiva' : 'Disattivata'}">
+          <input type="checkbox" class="toggle-auto-check" data-id="${item.id}" ${item.enabled ? "checked" : ""}>
+          <span class="slider"></span>
+        </label>
+      </div>
+
+      <div class="auto-details-list">
+        <div class="auto-detail-item">
+          <span>Fonte Post</span>
+          <strong title="${escapeHtml(item.source_name || item.source_id)}">${escapeHtml(item.source_name || item.source_id)}</strong>
+        </div>
+        <div class="auto-detail-item">
+          <span>Campagna</span>
+          <strong title="${escapeHtml(item.campaign_name || item.campaign_id)}">${escapeHtml(item.campaign_name || item.campaign_id)}</strong>
+        </div>
+        <div class="auto-detail-item">
+          <span>Gruppo Inserzioni</span>
+          <strong title="${escapeHtml(item.adset_name || item.adset_id)}">${escapeHtml(item.adset_name || item.adset_id)}</strong>
+        </div>
+        <div class="auto-detail-item">
+          <span>Frequenza</span>
+          <strong>Ogni ${item.check_interval_hours || 12}h</strong>
+        </div>
+      </div>
+
+      <div class="auto-status-footer">
+        <div>
+          <span>Ultimo: ${lastChecked}</span>
+          ${item.last_run_status !== "IDLE" ? `<span class="${statusBadgeClass}" style="margin-left: 6px;">${item.last_run_status}</span>` : ""}
+        </div>
+        <div class="auto-actions">
+          <button class="btn btn-secondary btn-sm run-single-btn" data-id="${item.id}" title="Avvia controllo adesso">
+            ▶ Esegui Ora
+          </button>
+          <button class="icon-button edit-auto-btn" data-id="${item.id}" title="Modifica">✏️</button>
+          <button class="icon-button delete-auto-btn" data-id="${item.id}" title="Elimina">🗑️</button>
+        </div>
+      </div>
+    `;
+
+    grid.appendChild(card);
+  });
+
+  // Attach event handlers
+  grid.querySelectorAll(".toggle-auto-check").forEach(chk => {
+    chk.addEventListener("change", async (e) => {
+      const id = e.target.getAttribute("data-id");
+      const enabled = e.target.checked;
+      try {
+        await api(`/api/automations/${id}/toggle`, {
+          method: "POST",
+          body: JSON.stringify({ enabled })
+        });
+        showBanner(`Automazione ${enabled ? 'attivata' : 'disattivata'}`, "info");
+        await loadAutomations();
+      } catch (err) {
+        showBanner(`Errore toggle: ${err.message}`, "danger");
+        e.target.checked = !enabled;
+      }
+    });
+  });
+
+  grid.querySelectorAll(".run-single-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-id");
+      btn.disabled = true;
+      btn.innerHTML = `<span class="spinner"></span> Esecuzione...`;
+      try {
+        const res = await api(`/api/automations/${id}/run`, { method: "POST" });
+        showRunReportModal("Risultato Controllo Manuale", res.report);
+        await loadAutomations();
+      } catch (err) {
+        showBanner(`Errore esecuzione: ${err.message}`, "danger");
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = `▶ Esegui Ora`;
+      }
+    });
+  });
+
+  grid.querySelectorAll(".delete-auto-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-id");
+      if (!confirm("Sei sicuro di voler eliminare questa automazione?")) return;
+      try {
+        await api(`/api/automations/${id}`, { method: "DELETE" });
+        showBanner("Automazione eliminata", "info");
+        await loadAutomations();
+      } catch (err) {
+        showBanner(`Errore eliminazione: ${err.message}`, "danger");
+      }
+    });
+  });
+
+  grid.querySelectorAll(".edit-auto-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      openEditModal(id);
+    });
+  });
 }
 
-async function loadCampaigns() {
-  if (!state.target.adAccountId) return;
-  setLoading("campaigns", true);
-  render();
+function showRunReportModal(title, report) {
+  dom.reportTitle.textContent = title;
+  const createdAdsHtml = (report.createdAds || []).length > 0
+    ? `
+      <h4>Inserzioni create con successo (${report.createdAds.length}):</h4>
+      <ul>
+        ${report.createdAds.map(ad => `<li><strong>${escapeHtml(ad.adName)}</strong> (Ad ID: <code>${ad.adId}</code>)</li>`).join("")}
+      </ul>
+    `
+    : `<p>Nessun nuovo post da sponsorizzare al momento.</p>`;
 
+  const errorsHtml = (report.errors || []).length > 0
+    ? `
+      <div style="color: #fb7185; margin-top: 12px;">
+        <h4>Attenzione / Errori (${report.errors.length}):</h4>
+        <ul>
+          ${report.errors.map(err => `<li>${escapeHtml(err.error || err)}</li>`).join("")}
+        </ul>
+      </div>
+    `
+    : "";
+
+  dom.reportContent.innerHTML = `
+    <div style="margin-bottom: 14px;">
+      <p><strong>Post totali analizzati:</strong> ${report.postsFound || 0}</p>
+      <p><strong>Nuove inserzioni create:</strong> ${report.adsCreated || 0}</p>
+      <p><strong>Post saltati (già sponsorizzati o non idonei):</strong> ${report.skippedCount || 0}</p>
+    </div>
+    ${createdAdsHtml}
+    ${errorsHtml}
+  `;
+
+  dom.runReportDialog.showModal();
+}
+
+// -----------------------------------------------------------------------------
+// System Status & KPIs
+// -----------------------------------------------------------------------------
+async function loadSystemStatus() {
   try {
-    const payload = await api(`/api/meta/campaigns?accountId=${encodeURIComponent(state.target.adAccountId)}`);
-    state.campaigns = payload.data || [];
-    if (!state.campaigns.some((campaign) => campaign.id === state.target.campaignId)) {
-      state.target.campaignId = state.campaigns[0]?.id || "";
+    const status = await api("/api/status");
+    state.systemStatus = status;
+
+    // KPI: Database
+    dom.kpiDbType.textContent = status.dbType === "postgres" ? "PostgreSQL" : "SQLite";
+    dom.kpiDbStatus.textContent = status.dbType === "postgres" ? "Cloud / Neon" : "Locale";
+
+    // KPI: Meta
+    if (status.tokenHealth?.ok) {
+      dom.kpiMetaStatus.textContent = "Connesso";
+      dom.kpiMetaIndicator.className = "status-indicator ok";
+    } else {
+      dom.kpiMetaStatus.textContent = "Non connesso";
+      dom.kpiMetaIndicator.className = "status-indicator err";
     }
-    render();
-    await loadAdsets();
-  } catch (error) {
-    state.campaigns = [];
-    showEmpty(els.postLibrary, `Campagne non disponibili: ${error.message}`);
-  } finally {
-    setLoading("campaigns", false);
-    render();
+
+    updateKpis();
+    updateGuideView();
+  } catch (err) {
+    console.error("Errore lettura status:", err);
+    dom.kpiMetaStatus.textContent = "Errore";
+    dom.kpiMetaIndicator.className = "status-indicator err";
   }
 }
 
-async function loadAdsets() {
-  if (!state.target.adAccountId) return;
-  setLoading("adsets", true);
-  render();
+function updateKpis() {
+  const activeCount = state.automations.filter(a => a.enabled).length;
+  const totalCount = state.automations.length;
 
-  try {
-    const params = new URLSearchParams({ accountId: state.target.adAccountId });
-    if (state.target.campaignId) params.set("campaignId", state.target.campaignId);
-    const payload = await api(`/api/meta/adsets?${params}`);
-    state.adsets = payload.data || [];
-    if (!state.adsets.some((adset) => adset.id === state.target.adsetId)) {
-      state.target.adsetId = state.adsets[0]?.id || "";
+  dom.kpiActiveAutomations.textContent = activeCount;
+  dom.kpiTotalAutomations.textContent = `su ${totalCount} totali`;
+  dom.badgeActiveCount.textContent = activeCount;
+}
+
+// -----------------------------------------------------------------------------
+// Modal: Nuova / Modifica Automazione
+// -----------------------------------------------------------------------------
+function setupModal() {
+  dom.openNewAutoModalBtn.addEventListener("click", () => openNewModal());
+  dom.createAutomationBannerBtn?.addEventListener("click", () => openNewModal());
+  dom.emptyCreateBtn?.addEventListener("click", () => openNewModal());
+
+  dom.closeModalBtn.addEventListener("click", () => dom.automationModal.close());
+  dom.cancelModalBtn.addEventListener("click", () => dom.automationModal.close());
+
+  // Platform Toggle inside Modal
+  dom.btnPlatformFB.addEventListener("click", () => {
+    setModalPlatform("Facebook");
+  });
+  dom.btnPlatformIG.addEventListener("click", () => {
+    setModalPlatform("Instagram");
+  });
+
+  // Dynamic cascades inside Modal
+  dom.autoAdAccountSelect.addEventListener("change", async () => {
+    const accountId = dom.autoAdAccountSelect.value;
+    await populateModalCampaigns(accountId);
+    await populateModalRules(accountId);
+  });
+
+  dom.autoCampaignSelect.addEventListener("change", async () => {
+    const accountId = dom.autoAdAccountSelect.value;
+    const campaignId = dom.autoCampaignSelect.value;
+    await populateModalAdsets(accountId, campaignId);
+  });
+
+  // Token Pills in Naming Pattern
+  document.querySelectorAll(".tag-pills .pill").forEach(pill => {
+    pill.addEventListener("click", () => {
+      const tag = pill.getAttribute("data-tag");
+      const input = dom.autoNamingPattern;
+      input.value += ` ${tag}`;
+      input.focus();
+    });
+  });
+
+  // Form Submission
+  dom.automationForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    await saveAutomationFromModal();
+  });
+}
+
+function setModalPlatform(platform) {
+  state.modalSelectedPlatform = platform;
+  dom.btnPlatformFB.classList.toggle("active", platform === "Facebook");
+  dom.btnPlatformIG.classList.toggle("active", platform === "Instagram");
+  populateModalSources(platform);
+}
+
+function openNewModal() {
+  state.editingAutoId = null;
+  dom.modalTitle.textContent = "Nuova Regola di Automazione";
+  dom.autoFormId.value = "";
+  dom.autoNameInput.value = "";
+  dom.autoNamingPattern.value = "ADV - {platform} - {post}";
+  dom.autoFilterKeywords.value = "";
+  dom.autoIntervalSelect.value = "12";
+  dom.autoAdStatusSelect.value = "PAUSED";
+
+  setModalPlatform("Facebook");
+  populateModalAdAccounts();
+  dom.automationModal.showModal();
+}
+
+function openEditModal(id) {
+  const item = state.automations.find(a => a.id === id);
+  if (!item) return;
+
+  state.editingAutoId = id;
+  dom.modalTitle.textContent = "Modifica Regola di Automazione";
+  dom.autoFormId.value = item.id;
+  dom.autoNameInput.value = item.name;
+  dom.autoNamingPattern.value = item.ad_name_pattern || "ADV - {platform} - {post}";
+  dom.autoFilterKeywords.value = item.filter_keywords || "";
+  dom.autoIntervalSelect.value = String(item.check_interval_hours || 12);
+  dom.autoAdStatusSelect.value = item.ad_status || "PAUSED";
+
+  setModalPlatform(item.platform);
+  populateModalAdAccounts(item.ad_account_id, item.campaign_id, item.adset_id, item.rule_id);
+  dom.automationModal.showModal();
+}
+
+function populateModalSources(platform, selectedId = "") {
+  const select = dom.autoSourceSelect;
+  select.innerHTML = "";
+
+  const sources = platform === "Facebook" ? state.manual.facebookPages : state.manual.instagramAccounts;
+  if (!sources || !sources.length) {
+    select.innerHTML = `<option value="">Nessuna fonte ${platform} trovata</option>`;
+    return;
+  }
+
+  sources.forEach(s => {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = s.label || s.name || s.id;
+    if (s.pageId) opt.setAttribute("data-page-id", s.pageId);
+    if (selectedId && s.id === selectedId) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+async function populateModalAdAccounts(targetAccountId = "", targetCampaignId = "", targetAdsetId = "", targetRuleId = "") {
+  const select = dom.autoAdAccountSelect;
+  select.innerHTML = "";
+
+  const accounts = state.manual.adAccounts || [];
+  if (!accounts.length) {
+    select.innerHTML = `<option value="">Nessun account pubblicitario disponibile</option>`;
+    return;
+  }
+
+  accounts.forEach(acc => {
+    const opt = document.createElement("option");
+    opt.value = acc.id;
+    opt.textContent = `${acc.name} (${acc.id})`;
+    if (targetAccountId ? acc.id === targetAccountId : false) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  const selectedAccountId = select.value || accounts[0]?.id;
+  if (selectedAccountId) {
+    await populateModalCampaigns(selectedAccountId, targetCampaignId);
+    await populateModalRules(selectedAccountId, targetRuleId);
+    if (targetCampaignId) {
+      await populateModalAdsets(selectedAccountId, targetCampaignId, targetAdsetId);
     }
-    state.queue = state.queue.map((post) => ({ ...post, adsetId: state.target.adsetId || post.adsetId }));
-  } catch {
-    state.adsets = [];
-  } finally {
-    setLoading("adsets", false);
-    render();
   }
 }
 
-async function loadRules() {
-  if (!state.target.adAccountId) return;
-  setLoading("rules", true);
-  render();
+async function populateModalCampaigns(accountId, targetCampaignId = "") {
+  const select = dom.autoCampaignSelect;
+  select.innerHTML = `<option value="">Caricamento campagne...</option>`;
 
   try {
-    const payload = await api(`/api/meta/rules?accountId=${encodeURIComponent(state.target.adAccountId)}`);
-    state.rules = payload.data || [];
-    if (!state.rules.some((rule) => rule.id === state.target.ruleId)) {
-      state.target.ruleId = state.rules[0]?.id || "";
-    }
-  } catch {
-    state.rules = [];
-  } finally {
-    setLoading("rules", false);
-    render();
-  }
-}
+    const payload = await api(`/api/meta/campaigns?accountId=${encodeURIComponent(accountId)}`);
+    const campaigns = payload.data || [];
+    select.innerHTML = "";
 
-async function loadPosts() {
-  setLoading("posts", true);
-  render();
-
-  try {
-    const sources = currentSources();
-    if (!sources.length) {
-      state.publishedPosts = [];
-      state.postsError = "";
+    if (!campaigns.length) {
+      select.innerHTML = `<option value="">Nessuna campagna attiva</option>`;
       return;
     }
 
-    if (!state.sourceId || !sources.some((source) => source.id === state.sourceId)) state.sourceId = sources[0].id;
+    campaigns.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.name} [${c.effective_status || c.status}]`;
+      if (targetCampaignId ? c.id === targetCampaignId : false) opt.selected = true;
+      select.appendChild(opt);
+    });
 
-    const source = sources.find((item) => item.id === state.sourceId);
-    const endpoint = state.activePlatform === "Facebook"
-      ? `/api/meta/facebook-posts?pageId=${encodeURIComponent(source.id)}`
-      : `/api/meta/instagram-media?instagramId=${encodeURIComponent(source.id)}${source.pageId ? `&pageId=${encodeURIComponent(source.pageId)}` : ""}`;
-    const payload = await api(endpoint);
-    state.publishedPosts = (payload.data || []).map((post) => normalizePublishedPost(post, source));
-    state.selectedIds = [];
-    state.postsError = "";
-  } catch (error) {
-    state.publishedPosts = [];
-    state.postsError = `Post non disponibili: ${error.message}`;
-  } finally {
-    setLoading("posts", false);
-    render();
+    const activeCampaignId = select.value || campaigns[0]?.id;
+    if (activeCampaignId) {
+      await populateModalAdsets(accountId, activeCampaignId);
+    }
+  } catch (err) {
+    select.innerHTML = `<option value="">Errore campagne: ${err.message}</option>`;
   }
 }
 
-function normalizePublishedPost(post, source) {
-  if (state.activePlatform === "Instagram") {
-    const caption = post.caption || "Post Instagram senza caption";
-    return {
-      id: `ig-${post.id}`,
-      platform: "Instagram",
-      sourcePostId: post.id,
-      sourceAccountId: source.id,
-      sourceLabel: source.label,
-      pageId: source.pageId || "",
-      permalink: post.permalink || "",
-      adName: `ADV - IG - ${caption.slice(0, 42)}`,
-      caption,
-      thumbnail: post.thumbnail_url || post.media_url || DEFAULT_IMAGE,
-      publishedAt: post.timestamp || ""
-    };
-  }
-
-  const caption = post.message || post.attachments?.data?.[0]?.title || "Post Facebook senza testo";
-  return {
-    id: `fb-${post.id}`,
-    platform: "Facebook",
-    sourcePostId: post.id,
-    sourceAccountId: source.id,
-    sourceLabel: source.label,
-    permalink: post.permalink_url || "",
-    adName: `ADV - FB - ${caption.slice(0, 42)}`,
-    caption,
-    thumbnail: post.full_picture || DEFAULT_IMAGE,
-    publishedAt: post.created_time || ""
-  };
-}
-
-function render() {
-  renderSelectOptions();
-  syncInputs();
-  renderSummary();
-  renderDestinationPanel();
-  renderLibrary();
-  renderQueue();
-  renderResults();
-}
-
-function renderSelectOptions() {
-  setOptions(els.adAccountSelect, visibleItems(state.adAccounts, state.filters.account, accountText, state.target.adAccountId), state.loading.config ? "Carico account..." : "Nessun account", (account) => `${account.name} (${account.id})`);
-  setOptions(els.campaignSelect, visibleItems(state.campaigns, state.filters.campaign, campaignText, state.target.campaignId), state.loading.campaigns ? "Carico campagne..." : "Nessuna campagna", (campaign) => `${campaign.name} | ${campaign.effective_status || campaign.status || ""}`);
-  setOptions(els.adsetSelect, visibleItems(state.adsets, state.filters.adset, adsetText, state.target.adsetId), state.loading.adsets ? "Carico gruppi..." : "Nessun gruppo inserzioni", (adset) => `${adset.name} | ${adset.effective_status || adset.status || ""}`);
-  setOptions(els.ruleSelect, visibleItems(state.rules, state.filters.rule, ruleText, state.target.ruleId), state.loading.rules ? "Carico regole..." : "Nessuna regola", (rule) => rule.name);
-  setOptions(els.sourceSelect, currentSources(), state.loading.posts ? "Carico fonti..." : "Nessuna fonte", (source) => `${source.label} (${source.id})`);
-}
-
-function setOptions(select, items, emptyLabel, labelFor) {
-  select.innerHTML = "";
-  if (!items.length) {
-    select.innerHTML = `<option value="">${escapeHtml(emptyLabel)}</option>`;
-    return;
-  }
-  select.innerHTML = items.map((item) => `<option value="${item.id}">${escapeHtml(labelFor(item))}</option>`).join("");
-}
-
-function filteredItems(items, search, textFor) {
-  const needle = search.trim().toLowerCase();
-  if (!needle) return items;
-  return items.filter((item) => textFor(item).toLowerCase().includes(needle));
-}
-
-function visibleItems(items, search, textFor, selectedId) {
-  const filtered = filteredItems(items, search, textFor);
-  if (!selectedId || filtered.some((item) => item.id === selectedId)) return filtered;
-  const selected = items.find((item) => item.id === selectedId);
-  return selected ? [selected, ...filtered] : filtered;
-}
-
-function syncInputs() {
-  els.adAccountSelect.value = state.target.adAccountId;
-  els.campaignSelect.value = state.target.campaignId;
-  els.adsetSelect.value = state.target.adsetId;
-  els.ruleSelect.value = state.target.ruleId;
-  els.accountSearch.value = state.filters.account;
-  els.campaignSearch.value = state.filters.campaign;
-  els.adsetSearch.value = state.filters.adset;
-  els.ruleSearch.value = state.filters.rule;
-  els.sourceSelect.value = state.sourceId;
-  els.adNamePattern.value = state.target.adNamePattern;
-  els.activeStatusCheckbox.checked = state.createActive;
-  els.sourceNote.textContent = state.sourcesNote || "";
-  els.sourceNote.classList.toggle("business", state.sourcesMode === "business");
-}
-
-function renderSummary() {
-  els.summaryAccount.textContent = selectedAccount()?.name || "Non selezionato";
-  els.summaryCampaign.textContent = selectedCampaign()?.name || "Non selezionata";
-  els.summaryAdset.textContent = selectedAdset()?.name || "Non selezionato";
-  els.metricAvailable.textContent = state.publishedPosts.length;
-  els.metricSelected.textContent = state.selectedIds.length;
-  els.metricQueued.textContent = state.queue.length;
-  const canCreate = state.queue.length > 0 && state.target.adAccountId && state.target.adsetId && !state.loading.creating;
-  const createLabel = state.createActive ? "Crea inserzioni attive" : "Crea inserzioni in pausa";
-  els.createAdsBtn.disabled = !canCreate;
-  els.createAdsBtnBottom.disabled = !canCreate;
-  els.createAdsBtn.textContent = state.loading.creating ? "Creo..." : createLabel;
-  els.createAdsBtnBottom.textContent = state.loading.creating ? "Creo..." : createLabel;
-}
-
-function renderDestinationPanel() {
-  updatePath(els.pathAccount, "Account", selectedAccount()?.name || "Da scegliere", Boolean(state.target.adAccountId));
-  updatePath(els.pathCampaign, "Campagna", selectedCampaign()?.name || "Da scegliere", Boolean(state.target.campaignId));
-  updatePath(els.pathAdset, "Gruppo", selectedAdset()?.name || "Da scegliere", Boolean(state.target.adsetId));
-  updatePath(els.pathRule, "Regola", selectedRule()?.name || "Facoltativa", Boolean(state.target.ruleId));
-
-  const account = selectedAccount();
-  const campaign = selectedCampaign();
-  const adset = selectedAdset();
-  const rule = selectedRule();
-
-  els.destinationPanel.innerHTML = `
-    <article>
-      <span>Account scelto</span>
-      <strong>${escapeHtml(account?.name || "Non selezionato")}</strong>
-      <p>${escapeHtml(account ? `${account.id} | ${account.currency || "valuta n/d"} | ${account.timezone_name || "timezone n/d"}` : "Scegli l'account pubblicitario da usare.")}</p>
-    </article>
-    <article>
-      <span>Campagna</span>
-      <strong>${escapeHtml(campaign?.name || "Non selezionata")}</strong>
-      <p>${escapeHtml(campaign ? `${campaign.effective_status || campaign.status || "stato n/d"} | ${campaign.objective || "obiettivo n/d"}` : "Poi scegli la campagna di destinazione.")}</p>
-    </article>
-    <article>
-      <span>Gruppo inserzioni</span>
-      <strong>${escapeHtml(adset?.name || "Non selezionato")}</strong>
-      <p>${escapeHtml(adset ? `${adset.effective_status || adset.status || "stato n/d"} | budget ${formatBudget(adset)}` : "Questo e il punto in cui verranno create le nuove inserzioni.")}</p>
-    </article>
-    <article>
-      <span>Regola</span>
-      <strong>${escapeHtml(rule?.name || "Nessuna regola")}</strong>
-      <p>${escapeHtml(rule ? "Sara applicata dopo la creazione, se la regola accetta ID inserzione." : "Puoi creare anche senza regola.")}</p>
-    </article>
-  `;
-}
-
-function updatePath(element, label, value, done) {
-  element.classList.toggle("done", done);
-  element.innerHTML = `<span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong>`;
-}
-
-function renderLibrary() {
-  if (state.loading.posts) {
-    showEmpty(els.postLibrary, "Carico post pubblicati...");
-    return;
-  }
-
-  if (state.postsError) {
-    showEmpty(els.postLibrary, state.postsError);
-    return;
-  }
-
-  document.querySelectorAll("[data-platform-tab]").forEach((button) => {
-    button.classList.toggle("active", button.dataset.platformTab === state.activePlatform);
-  });
-
-  const filteredPosts = getFilteredPosts();
-  visiblePostIds = filteredPosts.map((post) => post.id);
-  els.postLibrary.innerHTML = "";
-
-  if (!filteredPosts.length) {
-    showEmpty(els.postLibrary, "Nessun post trovato.");
-    return;
-  }
-
-  filteredPosts.forEach((post) => {
-    const queued = isQueued(post.id);
-    const selected = state.selectedIds.includes(post.id);
-    const item = document.createElement("article");
-    item.className = `library-item${selected ? " selected" : ""}${queued ? " queued" : ""}`;
-    item.innerHTML = `
-      <label class="select-box" aria-label="Seleziona post">
-        <input type="checkbox" data-action="select" data-id="${post.id}" ${selected ? "checked" : ""} ${queued ? "disabled" : ""}>
-      </label>
-      <img class="post-thumb" src="${post.thumbnail || DEFAULT_IMAGE}" alt="">
-      <div class="post-copy">
-        <div class="post-line">
-          <strong>${escapeHtml(post.adName)}</strong>
-          <span class="platform ${post.platform.toLowerCase()}">${post.platform}</span>
-        </div>
-        <p>${escapeHtml(post.caption)}</p>
-        <span>ID: ${escapeHtml(post.sourcePostId)} | ${formatDate(post.publishedAt)} | ${escapeHtml(post.sourceLabel || "")}</span>
-      </div>
-      <div class="post-actions">
-        <a class="secondary-link" href="${post.permalink}" target="_blank" rel="noreferrer">Apri</a>
-        <button class="secondary-button" type="button" data-action="queue-one" data-id="${post.id}" ${queued || !state.target.adsetId ? "disabled" : ""}>${queued ? "In coda" : "Aggiungi"}</button>
-      </div>
-    `;
-    els.postLibrary.appendChild(item);
-  });
-}
-
-function renderQueue() {
-  els.queueList.innerHTML = "";
-  if (!state.queue.length) {
-    showEmpty(els.queueList, "Aggiungi almeno un post dalla libreria.");
-    return;
-  }
-
-  state.queue.forEach((post) => {
-    const item = document.createElement("article");
-    item.className = "queue-item";
-    item.innerHTML = `
-      <img class="post-thumb" src="${post.thumbnail || DEFAULT_IMAGE}" alt="">
-      <div class="post-copy">
-        <label>
-          Nome inserzione
-          <input type="text" data-action="queue-ad-name" data-id="${post.id}" value="${escapeHtml(post.adName)}">
-        </label>
-        <span>${escapeHtml(post.platform)} | ${escapeHtml(post.sourcePostId)}</span>
-        <span class="rule-note">${escapeHtml(selectedRule(post.ruleId)?.name || "Nessuna regola selezionata")}</span>
-      </div>
-      <button class="ghost-button" type="button" data-action="remove-queue" data-id="${post.id}">Rimuovi</button>
-    `;
-    els.queueList.appendChild(item);
-  });
-}
-
-function renderResults() {
-  els.resultCard.hidden = !state.results.length;
-  els.resultList.innerHTML = "";
-  state.results.forEach((result) => {
-    const item = document.createElement("article");
-    item.className = `result-item ${result.ok ? "ok" : "error"}`;
-    const ruleMessage = result.ruleMessage ? `<span>${escapeHtml(result.ruleMessage)}</span>` : "";
-    item.innerHTML = result.ok
-      ? `<strong>Creata: ${escapeHtml(result.adName)}</strong><span>Ad ID: ${escapeHtml(result.adId)} | Creative ID: ${escapeHtml(result.creativeId)}</span>${ruleMessage}`
-      : `<strong>Errore: ${escapeHtml(result.adName)}</strong><span>${escapeHtml(result.error)}</span>`;
-    els.resultList.appendChild(item);
-  });
-}
-
-function showEmpty(container, message) {
-  container.innerHTML = `<div class="empty-state">${escapeHtml(message)}</div>`;
-}
-
-function getFilteredPosts() {
-  const search = els.searchInput.value.trim().toLowerCase();
-  return state.publishedPosts.filter((post) => {
-    const haystack = `${post.adName} ${post.caption} ${post.sourcePostId} ${post.permalink}`.toLowerCase();
-    return !search || haystack.includes(search);
-  });
-}
-
-function queuePosts(postIds) {
-  const postsToAdd = state.publishedPosts
-    .filter((post) => postIds.includes(post.id) && !isQueued(post.id))
-    .map((post) => ({
-      ...post,
-      adName: buildAdName(post),
-      adsetId: state.target.adsetId,
-      ruleId: state.target.ruleId
-    }));
-  state.queue = [...state.queue, ...postsToAdd];
-  state.selectedIds = state.selectedIds.filter((id) => !postIds.includes(id));
-  render();
-}
-
-async function createAds() {
-  if (!state.queue.length || !state.target.adAccountId || !state.target.adsetId) return;
-
-  setLoading("creating", true);
-  state.results = [];
-  render();
+async function populateModalAdsets(accountId, campaignId, targetAdsetId = "") {
+  const select = dom.autoAdsetSelect;
+  select.innerHTML = `<option value="">Caricamento gruppi...</option>`;
 
   try {
-    const payload = {
-      adAccountId: state.target.adAccountId,
-      status: state.createActive ? "ACTIVE" : "PAUSED",
-      ads: state.queue.map((post) => ({
-        id: post.id,
-        adName: post.adName,
-        platform: post.platform,
-        sourcePostId: post.sourcePostId,
-        adsetId: post.adsetId,
-        ruleId: post.ruleId,
-        pageId: post.platform === "Facebook" ? post.sourceAccountId : post.pageId || null,
-        instagramAccountId: post.platform === "Instagram" ? post.sourceAccountId : null
-      }))
-    };
-    const result = await api("/api/meta/create-ads", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload)
+    const payload = await api(`/api/meta/adsets?accountId=${encodeURIComponent(accountId)}&campaignId=${encodeURIComponent(campaignId)}`);
+    const adsets = payload.data || [];
+    select.innerHTML = "";
+
+    if (!adsets.length) {
+      select.innerHTML = `<option value="">Nessun gruppo inserzioni</option>`;
+      return;
+    }
+
+    adsets.forEach(a => {
+      const opt = document.createElement("option");
+      opt.value = a.id;
+      opt.textContent = `${a.name} [${a.effective_status || a.status}]`;
+      if (targetAdsetId ? a.id === targetAdsetId : false) opt.selected = true;
+      select.appendChild(opt);
     });
-    state.results = result.data || [];
-    state.queue = state.queue.filter((post) => !state.results.some((resultItem) => resultItem.ok && resultItem.localId === post.id));
-  } catch (error) {
-    state.results = [{ ok: false, adName: "Batch", error: error.message }];
-  } finally {
-    setLoading("creating", false);
-    render();
-    els.resultCard.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    select.innerHTML = `<option value="">Errore gruppi: ${err.message}</option>`;
   }
 }
 
-function exportBatch() {
+async function populateModalRules(accountId, targetRuleId = "") {
+  const select = dom.autoRuleSelect;
+  select.innerHTML = `<option value="">Nessuna regola collegata</option>`;
+
+  try {
+    const payload = await api(`/api/meta/rules?accountId=${encodeURIComponent(accountId)}`);
+    const rules = payload.data || [];
+
+    rules.forEach(r => {
+      const opt = document.createElement("option");
+      opt.value = r.id;
+      opt.textContent = `${r.name}`;
+      if (targetRuleId ? r.id === targetRuleId : false) opt.selected = true;
+      select.appendChild(opt);
+    });
+  } catch {
+    // Rules are optional, ignore error
+  }
+}
+
+async function saveAutomationFromModal() {
+  const sourceOption = dom.autoSourceSelect.selectedOptions[0];
+  const campaignOption = dom.autoCampaignSelect.selectedOptions[0];
+  const adsetOption = dom.autoAdsetSelect.selectedOptions[0];
+  const ruleOption = dom.autoRuleSelect.selectedOptions[0];
+
   const payload = {
-    destination: {
-      ad_account_name: selectedAccount()?.name || null,
-      ad_account_id: state.target.adAccountId,
-      campaign_name: selectedCampaign()?.name || null,
-      campaign_id: state.target.campaignId,
-      adset_name: selectedAdset()?.name || null,
-      adset_id: state.target.adsetId,
-      default_rule_name: selectedRule()?.name || null,
-      default_rule_id: state.target.ruleId
-    },
-    ads_to_create: state.queue.map((post) => ({
-      ad_name: post.adName,
-      adset_id: post.adsetId,
-      rule_id: post.ruleId,
-      rule_name: selectedRule(post.ruleId)?.name || null,
-      platform: post.platform,
-      source_post_id: post.platform === "Facebook" ? post.sourcePostId : null,
-      instagram_media_id: post.platform === "Instagram" ? post.sourcePostId : null,
-      status: state.createActive ? "ACTIVE" : "PAUSED"
-    }))
+    name: dom.autoNameInput.value.trim(),
+    platform: state.modalSelectedPlatform,
+    source_id: dom.autoSourceSelect.value,
+    source_name: sourceOption?.textContent || "",
+    page_id: sourceOption?.getAttribute("data-page-id") || "",
+    ad_account_id: dom.autoAdAccountSelect.value,
+    campaign_id: dom.autoCampaignSelect.value,
+    campaign_name: campaignOption?.textContent || "",
+    adset_id: dom.autoAdsetSelect.value,
+    adset_name: adsetOption?.textContent || "",
+    rule_id: dom.autoRuleSelect.value || "",
+    rule_name: dom.autoRuleSelect.value ? ruleOption?.textContent || "" : "",
+    check_interval_hours: Number(dom.autoIntervalSelect.value) || 12,
+    ad_status: dom.autoAdStatusSelect.value || "PAUSED",
+    ad_name_pattern: dom.autoNamingPattern.value || "ADV - {platform} - {post}",
+    filter_keywords: dom.autoFilterKeywords.value.trim()
   };
-  els.exportOutput.value = JSON.stringify(payload, null, 2);
-  els.exportDialog.showModal();
+
+  try {
+    if (state.editingAutoId) {
+      await api(`/api/automations/${state.editingAutoId}`, {
+        method: "PUT",
+        body: JSON.stringify(payload)
+      });
+      showBanner("Automazione aggiornata con successo", "info");
+    } else {
+      await api("/api/automations", {
+        method: "POST",
+        body: JSON.stringify(payload)
+      });
+      showBanner("Nuova automazione salvata con successo", "info");
+    }
+
+    dom.automationModal.close();
+    await loadAutomations();
+  } catch (err) {
+    showBanner(`Errore salvataggio: ${err.message}`, "danger");
+  }
 }
 
-function setLoading(key, value) {
-  state.loading[key] = value;
+// -----------------------------------------------------------------------------
+// Logs View Controller
+// -----------------------------------------------------------------------------
+async function loadLogs() {
+  try {
+    const [runsRes, postsRes] = await Promise.all([
+      api("/api/logs?limit=40"),
+      api("/api/processed-posts?limit=40")
+    ]);
+
+    state.logs = runsRes.data || [];
+    state.processedPosts = postsRes.data || [];
+
+    // KPI total processed
+    dom.kpiProcessedPosts.textContent = state.processedPosts.length;
+    dom.logsCountBadge.textContent = `${state.logs.length} esecuzioni`;
+    dom.postsCountBadge.textContent = `${state.processedPosts.length} post memorizzati`;
+
+    renderLogsTables();
+  } catch (err) {
+    console.error("Errore caricamento log:", err);
+  }
 }
 
-function currentSources() {
-  return state.activePlatform === "Facebook" ? state.facebookPages : state.instagramAccounts;
+function renderLogsTables() {
+  // Runs Table
+  const tbodyRuns = dom.runsTableBody;
+  tbodyRuns.innerHTML = "";
+
+  if (!state.logs.length) {
+    tbodyRuns.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 24px;">Nessuna esecuzione registrata</td></tr>`;
+  } else {
+    state.logs.forEach(log => {
+      const dateStr = new Date(log.executed_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" });
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${dateStr}</td>
+        <td><strong>${escapeHtml(log.automation_name || "Globale")}</strong></td>
+        <td><span class="badge-tag">${log.trigger_type}</span></td>
+        <td>${log.posts_found}</td>
+        <td><span style="color: var(--accent-emerald); font-weight: 700;">${log.ads_created}</span></td>
+        <td>${log.errors_count > 0 ? `<span style="color: var(--accent-rose); font-weight: 700;">${log.errors_count}</span>` : '0'}</td>
+      `;
+      tbodyRuns.appendChild(tr);
+    });
+  }
+
+  // Posts Table
+  const tbodyPosts = dom.postsTableBody;
+  tbodyPosts.innerHTML = "";
+
+  if (!state.processedPosts.length) {
+    tbodyPosts.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 24px;">Nessun post sponsorizzato finora</td></tr>`;
+  } else {
+    state.processedPosts.forEach(p => {
+      const dateStr = new Date(p.created_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" });
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><span class="auto-platform-tag ${p.platform === 'Facebook' ? 'facebook' : 'instagram'}">${p.platform}</span></td>
+        <td>
+          <div style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+            <strong>${escapeHtml(p.ad_name || p.post_message || p.post_id)}</strong>
+          </div>
+        </td>
+        <td><code>${p.ad_id || '-'}</code></td>
+        <td><span class="badge-tag ${p.status === 'SUCCESS' ? 'success' : 'error'}">${p.status}</span></td>
+        <td>${dateStr}</td>
+      `;
+      tbodyPosts.appendChild(tr);
+    });
+  }
 }
 
-function selectedAccount() {
-  return state.adAccounts.find((account) => account.id === state.target.adAccountId);
+// -----------------------------------------------------------------------------
+// Guide & External Cron Setup
+// -----------------------------------------------------------------------------
+function updateGuideView() {
+  const currentHost = window.location.origin;
+  dom.cronWebhookUrl.textContent = `${currentHost}/api/cron/check-and-sponsor`;
+
+  const status = state.systemStatus;
+  if (status) {
+    dom.diagDbType.textContent = status.dbType === "postgres" ? "PostgreSQL Cloud (Neon/Supabase)" : "SQLite Locale";
+    if (status.tokenHealth?.ok) {
+      dom.diagTokenStatus.textContent = "✓ Valido e Connesso";
+      dom.diagTokenStatus.style.color = "var(--accent-emerald)";
+      dom.diagTokenUser.textContent = status.tokenHealth.user?.name || "Utente Meta Verificato";
+    } else {
+      dom.diagTokenStatus.textContent = "✕ Non Connesso / Errore";
+      dom.diagTokenStatus.style.color = "var(--accent-rose)";
+      dom.diagTokenUser.textContent = status.tokenHealth?.error || "Token mancante o scaduto";
+    }
+  }
 }
 
-function selectedCampaign() {
-  return state.campaigns.find((campaign) => campaign.id === state.target.campaignId);
+function setupGuideActions() {
+  dom.copyCronUrlBtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(dom.cronWebhookUrl.textContent);
+    dom.copyCronUrlBtn.textContent = "Copiato!";
+    setTimeout(() => { dom.copyCronUrlBtn.textContent = "Copia URL"; }, 2000);
+  });
+
+  dom.copyCronHeaderBtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(dom.cronAuthHeader.textContent);
+    dom.copyCronHeaderBtn.textContent = "Copiato!";
+    setTimeout(() => { dom.copyCronHeaderBtn.textContent = "Copia Header"; }, 2000);
+  });
+
+  dom.checkMetaHealthBtn.addEventListener("click", async () => {
+    dom.checkMetaHealthBtn.disabled = true;
+    dom.checkMetaHealthBtn.textContent = "Verifica in corso...";
+    await loadSystemStatus();
+    dom.checkMetaHealthBtn.disabled = false;
+    dom.checkMetaHealthBtn.textContent = "🩺 Verifica Connessione Meta";
+    showBanner("Stato Meta aggiornato", "info");
+  });
+
+  const saveBtn = document.getElementById("saveManualTokenBtn");
+  const tokenInp = document.getElementById("manualTokenInput");
+  if (saveBtn && tokenInp) {
+    saveBtn.addEventListener("click", async () => {
+      const val = tokenInp.value.trim();
+      if (!val) {
+        alert("Inserisci un token valido (inizia con EAA...)");
+        return;
+      }
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Salvataggio...";
+      try {
+        await api("/api/meta/save-token", {
+          method: "POST",
+          body: JSON.stringify({ token: val })
+        });
+        tokenInp.value = "";
+        showBanner("Token salvato con successo nel database!", "info");
+        await loadSystemStatus();
+        await loadManualConfig();
+      } catch (err) {
+        alert("Errore salvataggio token: " + err.message);
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Salva";
+      }
+    });
+  }
 }
 
-function selectedAdset() {
-  return state.adsets.find((adset) => adset.id === state.target.adsetId);
+// -----------------------------------------------------------------------------
+// Global "Esegui Tutto Ora" Button
+// -----------------------------------------------------------------------------
+function setupGlobalRun() {
+  dom.globalRunBtn.addEventListener("click", async () => {
+    dom.globalRunBtn.disabled = true;
+    dom.globalRunSpinner.hidden = false;
+    dom.globalRunText.textContent = "Controllo in corso...";
+
+    try {
+      const res = await api("/api/automations/run-all", { method: "POST" });
+      const results = res.result?.results || [];
+      const totalCreated = results.reduce((acc, r) => acc + (r.adsCreated || 0), 0);
+      const totalPosts = results.reduce((acc, r) => acc + (r.postsFound || 0), 0);
+      const totalErrors = results.reduce((acc, r) => acc + (r.errorsCount || 0), 0);
+
+      showRunReportModal("Risultato Controllo Globale", {
+        postsFound: totalPosts,
+        adsCreated: totalCreated,
+        skippedCount: 0,
+        errorsCount: totalErrors,
+        createdAds: results.flatMap(r => r.createdAds || []),
+        errors: results.flatMap(r => r.errors || [])
+      });
+
+      await loadAutomations();
+      await loadLogs();
+    } catch (err) {
+      showBanner(`Errore esecuzione globale: ${err.message}`, "danger");
+    } finally {
+      dom.globalRunBtn.disabled = false;
+      dom.globalRunSpinner.hidden = true;
+      dom.globalRunText.textContent = "▶ Esegui Tutto Ora";
+    }
+  });
+
+  dom.refreshAutomationsBtn?.addEventListener("click", () => loadAutomations());
+  dom.refreshLogsBtn?.addEventListener("click", () => loadLogs());
 }
 
-function selectedRule(ruleId = state.target.ruleId) {
-  return state.rules.find((rule) => rule.id === ruleId);
-}
-
-function accountText(account) {
-  return `${account.name} ${account.id} ${account.currency || ""} ${account.timezone_name || ""}`;
-}
-
-function campaignText(campaign) {
-  return `${campaign.name} ${campaign.id} ${campaign.effective_status || ""} ${campaign.status || ""} ${campaign.objective || ""}`;
-}
-
-function adsetText(adset) {
-  return `${adset.name} ${adset.id} ${adset.effective_status || ""} ${adset.status || ""} ${adset.optimization_goal || ""}`;
-}
-
-function ruleText(rule) {
-  return `${rule.name} ${rule.id} ${rule.status || ""}`;
-}
-
-function isQueued(postId) {
-  return state.queue.some((post) => post.id === postId);
-}
-
-function buildAdName(post) {
-  const shortPost = post.adName.replace(/^ADV\s*-\s*/i, "").trim();
-  return state.target.adNamePattern
-    .replaceAll("{platform}", post.platform)
-    .replaceAll("{post}", shortPost || post.sourcePostId)
-    .replaceAll("{id}", post.sourcePostId);
-}
-
-function formatDate(value) {
-  if (!value) return "data non importata";
-  return new Intl.DateTimeFormat("it-IT", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value));
-}
-
-function formatBudget(adset) {
-  const amount = adset.daily_budget || adset.lifetime_budget;
-  if (!amount) return "n/d";
-  const currency = selectedAccount()?.currency || "EUR";
-  return new Intl.NumberFormat("it-IT", { style: "currency", currency }).format(Number(amount) / 100);
-}
-
+// -----------------------------------------------------------------------------
+// PRESERVED & INTEGRATED: Manual Bulk Sponsor Logic
+// -----------------------------------------------------------------------------
 function escapeHtml(value) {
-  return String(value)
+  return String(value ?? "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+    .replaceAll("'", "&#39;");
 }
 
-els.adAccountSelect.addEventListener("change", async () => {
-  state.target.adAccountId = els.adAccountSelect.value;
-  state.target.campaignId = "";
-  state.target.adsetId = "";
-  state.target.ruleId = "";
-  state.filters.campaign = "";
-  state.filters.adset = "";
-  state.filters.rule = "";
-  state.queue = [];
-  await loadSources();
-  await Promise.all([loadCampaigns(), loadRules(), loadPosts()]);
-});
+function truncate(text, max = 110) {
+  const clean = String(text || "").replace(/\s+/g, " ").trim();
+  return clean.length <= max ? clean : `${clean.slice(0, max - 1)}...`;
+}
 
-els.campaignSelect.addEventListener("change", async () => {
-  state.target.campaignId = els.campaignSelect.value;
-  state.target.adsetId = "";
-  state.queue = [];
-  await loadAdsets();
-});
+function matchesFilter(text, query) {
+  if (!query) return true;
+  return String(text || "").toLowerCase().includes(query.toLowerCase().trim());
+}
 
-[els.adsetSelect, els.ruleSelect, els.adNamePattern].forEach((input) => {
-  input.addEventListener("change", () => {
-    state.target.adsetId = els.adsetSelect.value;
-    state.target.ruleId = els.ruleSelect.value;
-    state.target.adNamePattern = els.adNamePattern.value.trim() || "ADV - {platform} - {post}";
-    state.queue = state.queue.map((post) => ({ ...post, adsetId: state.target.adsetId, ruleId: state.target.ruleId }));
-    render();
-  });
-  input.addEventListener("input", () => {
-    state.target.adNamePattern = els.adNamePattern.value.trim() || "ADV - {platform} - {post}";
-  });
-});
+function formatAdName(pattern, { platform, post, fallback }) {
+  const template = pattern?.trim() || "ADV - {platform} - {post}";
+  const cleanPost = truncate(post?.message || fallback, 35)
+    .replace(/[^\p{L}\p{N}\s\-_]/gu, "")
+    .trim();
 
-els.sourceSelect.addEventListener("change", async () => {
-  state.sourceId = els.sourceSelect.value;
-  state.selectedIds = [];
-  await loadPosts();
-});
+  return template
+    .replaceAll("{platform}", platform)
+    .replaceAll("{post}", cleanPost || fallback)
+    .replaceAll("{source}", post?.sourceName || "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
-els.searchInput.addEventListener("input", render);
-[
-  [els.accountSearch, "account"],
-  [els.campaignSearch, "campaign"],
-  [els.adsetSearch, "adset"],
-  [els.ruleSearch, "rule"]
-].forEach(([input, key]) => {
-  input.addEventListener("input", () => {
-    state.filters[key] = input.value;
-    render();
-  });
-});
+async function loadManualConfig() {
+  try {
+    const config = await api("/api/meta/config");
+    state.manual.adAccounts = config.adAccounts || [];
+    state.manual.facebookPages = config.facebookPages || [];
+    state.manual.instagramAccounts = config.instagramAccounts || [];
+    state.manual.sourcesMode = "configured";
+    state.manual.sourcesNote = "Fonti configurate nel sistema.";
 
-document.querySelector("#refreshTargetBtn").addEventListener("click", async () => {
-  await loadSources();
-  await Promise.all([loadCampaigns(), loadRules(), loadPosts()]);
-});
+    if (!state.manual.target.adAccountId && state.manual.adAccounts.length) {
+      state.manual.target.adAccountId = state.manual.adAccounts[0].id;
+    }
+    if (!state.manual.sourceId) {
+      state.manual.sourceId = state.manual.facebookPages[0]?.id || state.manual.instagramAccounts[0]?.id || "";
+    }
 
-document.querySelector("#renameQueueBtn").addEventListener("click", () => {
-  state.queue = state.queue.map((post) => ({ ...post, adName: buildAdName(post) }));
-  render();
-});
-document.querySelector("#queueSelectedBtn").addEventListener("click", () => queuePosts(state.selectedIds));
-document.querySelector("#selectVisibleBtn").addEventListener("click", () => {
-  state.selectedIds = visiblePostIds.filter((id) => !isQueued(id));
-  render();
-});
-document.querySelector("#clearQueueBtn").addEventListener("click", () => {
-  state.queue = [];
-  state.selectedIds = [];
-  render();
-});
-els.createAdsBtn.addEventListener("click", createAds);
-els.createAdsBtnBottom.addEventListener("click", createAds);
-els.activeStatusCheckbox.addEventListener("change", () => {
-  state.createActive = els.activeStatusCheckbox.checked;
-  renderSummary();
-});
-document.querySelector("#exportBtn").addEventListener("click", exportBatch);
-document.querySelector("#copyExportBtn").addEventListener("click", async () => navigator.clipboard.writeText(els.exportOutput.value));
-
-document.querySelectorAll("[data-platform-tab]").forEach((button) => {
-  button.addEventListener("click", async () => {
-    state.activePlatform = button.dataset.platformTab;
-    state.sourceId = "";
-    state.selectedIds = [];
-    await loadPosts();
-  });
-});
-
-els.postLibrary.addEventListener("click", (event) => {
-  const target = event.target.closest("[data-action]");
-  if (!target) return;
-  if (target.dataset.action === "select") {
-    if (target.checked && !state.selectedIds.includes(target.dataset.id)) state.selectedIds.push(target.dataset.id);
-    if (!target.checked) state.selectedIds = state.selectedIds.filter((id) => id !== target.dataset.id);
-    render();
+    renderManual();
+    await loadManualSources();
+    await Promise.all([loadManualCampaigns(), loadManualRules(), loadManualPosts()]);
+  } catch (err) {
+    console.error("Errore configurazione manuale:", err);
   }
-  if (target.dataset.action === "queue-one") queuePosts([target.dataset.id]);
-});
+}
 
-els.queueList.addEventListener("click", (event) => {
-  const button = event.target.closest("button[data-action='remove-queue']");
-  if (!button) return;
-  state.queue = state.queue.filter((post) => post.id !== button.dataset.id);
-  render();
-});
+async function loadManualSources() {
+  if (!state.manual.target.adAccountId) return;
+  try {
+    const payload = await api(`/api/meta/sources?accountId=${encodeURIComponent(state.manual.target.adAccountId)}`);
+    state.manual.facebookPages = payload.facebookPages || [];
+    state.manual.instagramAccounts = payload.instagramAccounts || [];
+    state.manual.sourcesMode = payload.mode || "configured";
+    state.manual.sourcesNote = payload.note || "";
+    state.manual.sourceId = "";
+    state.manual.selectedIds = [];
+    renderManual();
+  } catch (err) {
+    state.manual.sourcesNote = `Fonti non aggiornate: ${err.message}`;
+    renderManual();
+  }
+}
 
-els.queueList.addEventListener("input", (event) => {
-  const target = event.target.closest("[data-action='queue-ad-name']");
-  if (!target) return;
-  state.queue = state.queue.map((post) => post.id === target.dataset.id ? { ...post, adName: target.value.trim() } : post);
-  renderSummary();
-});
+async function loadManualCampaigns() {
+  if (!state.manual.target.adAccountId) return;
+  try {
+    const payload = await api(`/api/meta/campaigns?accountId=${encodeURIComponent(state.manual.target.adAccountId)}`);
+    state.manual.campaigns = payload.data || [];
+    if (!state.manual.campaigns.some(c => c.id === state.manual.target.campaignId)) {
+      state.manual.target.campaignId = state.manual.campaigns[0]?.id || "";
+    }
+    renderManual();
+    await loadManualAdsets();
+  } catch {
+    state.manual.campaigns = [];
+    renderManual();
+  }
+}
 
-render();
-loadConfig();
+async function loadManualAdsets() {
+  if (!state.manual.target.adAccountId || !state.manual.target.campaignId) {
+    state.manual.adsets = [];
+    renderManual();
+    return;
+  }
+  try {
+    const payload = await api(`/api/meta/adsets?accountId=${encodeURIComponent(state.manual.target.adAccountId)}&campaignId=${encodeURIComponent(state.manual.target.campaignId)}`);
+    state.manual.adsets = payload.data || [];
+    if (!state.manual.adsets.some(a => a.id === state.manual.target.adsetId)) {
+      state.manual.target.adsetId = state.manual.adsets[0]?.id || "";
+    }
+    renderManual();
+  } catch {
+    state.manual.adsets = [];
+    renderManual();
+  }
+}
+
+async function loadManualRules() {
+  if (!state.manual.target.adAccountId) return;
+  try {
+    const payload = await api(`/api/meta/rules?accountId=${encodeURIComponent(state.manual.target.adAccountId)}`);
+    state.manual.rules = payload.data || [];
+    renderManual();
+  } catch {
+    state.manual.rules = [];
+    renderManual();
+  }
+}
+
+async function loadManualPosts() {
+  const currentSources = state.manual.activePlatform === "Facebook" ? state.manual.facebookPages : state.manual.instagramAccounts;
+  if (!currentSources.length) {
+    state.manual.publishedPosts = [];
+    renderManual();
+    return;
+  }
+
+  if (!state.manual.sourceId || !currentSources.some(s => s.id === state.manual.sourceId)) {
+    state.manual.sourceId = currentSources[0]?.id || "";
+  }
+
+  const selectedSource = currentSources.find(s => s.id === state.manual.sourceId);
+  const endpoint = state.manual.activePlatform === "Facebook"
+    ? `/api/meta/facebook-posts?pageId=${encodeURIComponent(state.manual.sourceId)}`
+    : `/api/meta/instagram-media?instagramId=${encodeURIComponent(state.manual.sourceId)}&pageId=${encodeURIComponent(selectedSource?.pageId || "")}`;
+
+  try {
+    const payload = await api(endpoint);
+    state.manual.publishedPosts = (payload.data || []).map(item => ({
+      id: item.id,
+      platform: state.manual.activePlatform,
+      sourceId: state.manual.sourceId,
+      sourceName: selectedSource?.label || selectedSource?.name || state.manual.sourceId,
+      pageId: selectedSource?.pageId || (state.manual.activePlatform === "Facebook" ? state.manual.sourceId : ""),
+      instagramAccountId: state.manual.activePlatform === "Instagram" ? state.manual.sourceId : "",
+      message: item.message || item.caption || item.attachments?.data?.[0]?.title || "",
+      permalink: item.permalink || item.permalink_url || "",
+      createdTime: item.created_time || item.timestamp || "",
+      picture: item.full_picture || item.media_url || item.thumbnail_url || DEFAULT_IMAGE
+    }));
+    state.manual.selectedIds = [];
+    renderManual();
+  } catch (err) {
+    state.manual.publishedPosts = [];
+    state.manual.postsError = err.message;
+    renderManual();
+  }
+}
+
+function renderManual() {
+  const m = state.manual;
+
+  // Status strip
+  const currentAccount = m.adAccounts.find(a => a.id === m.target.adAccountId);
+  const currentCampaign = m.campaigns.find(c => c.id === m.target.campaignId);
+  const currentAdset = m.adsets.find(a => a.id === m.target.adsetId);
+
+  dom.summaryAccount.textContent = currentAccount ? currentAccount.name : "Non selezionato";
+  dom.summaryCampaign.textContent = currentCampaign ? currentCampaign.name : "Non selezionata";
+  dom.summaryAdset.textContent = currentAdset ? currentAdset.name : "Non selezionato";
+  dom.metricQueued.textContent = m.queue.length;
+
+  dom.pathAccount.querySelector("strong").textContent = currentAccount ? currentAccount.name : "Da scegliere";
+  dom.pathAccount.classList.toggle("done", Boolean(currentAccount));
+
+  dom.pathCampaign.querySelector("strong").textContent = currentCampaign ? currentCampaign.name : "Da scegliere";
+  dom.pathCampaign.classList.toggle("done", Boolean(currentCampaign));
+
+  dom.pathAdset.querySelector("strong").textContent = currentAdset ? currentAdset.name : "Da scegliere";
+  dom.pathAdset.classList.toggle("done", Boolean(currentAdset));
+
+  const currentRule = m.rules.find(r => r.id === m.target.ruleId);
+  dom.pathRule.querySelector("strong").textContent = currentRule ? currentRule.name : "Facoltativa";
+  dom.pathRule.classList.toggle("done", Boolean(currentRule));
+
+  // Selectors
+  dom.adAccountSelect.innerHTML = m.adAccounts.map(a => `<option value="${a.id}" ${a.id === m.target.adAccountId ? "selected" : ""}>${escapeHtml(a.name)} (${a.id})</option>`).join("");
+  dom.campaignSelect.innerHTML = m.campaigns.map(c => `<option value="${c.id}" ${c.id === m.target.campaignId ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
+  dom.adsetSelect.innerHTML = m.adsets.map(a => `<option value="${a.id}" ${a.id === m.target.adsetId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+  dom.ruleSelect.innerHTML = `<option value="">Nessuna regola</option>` + m.rules.map(r => `<option value="${r.id}" ${r.id === m.target.ruleId ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("");
+
+  // Sources dropdown
+  const sources = m.activePlatform === "Facebook" ? m.facebookPages : m.instagramAccounts;
+  dom.sourceSelect.innerHTML = sources.map(s => `<option value="${s.id}" ${s.id === m.sourceId ? "selected" : ""}>${escapeHtml(s.label || s.name || s.id)}</option>`).join("");
+  dom.sourceNote.textContent = m.sourcesNote || "";
+
+  // Render Post Library
+  renderPostLibrary();
+
+  // Render Queue List
+  renderQueueList();
+}
+
+function renderPostLibrary() {
+  const m = state.manual;
+  const container = dom.postLibrary;
+  container.innerHTML = "";
+
+  const query = dom.searchInput.value.toLowerCase().trim();
+  const filtered = m.publishedPosts.filter(p => matchesFilter(p.message, query) || matchesFilter(p.id, query));
+  visiblePostIds = filtered.map(p => p.id);
+
+  dom.metricAvailable.textContent = filtered.length;
+  dom.metricSelected.textContent = m.selectedIds.length;
+
+  if (!filtered.length) {
+    container.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: var(--text-dim); padding: 40px;">Nessun post trovato</div>`;
+    return;
+  }
+
+  filtered.forEach(p => {
+    const isSelected = m.selectedIds.includes(p.id);
+    const card = document.createElement("div");
+    card.className = `post-card ${isSelected ? "selected" : ""}`;
+    const dateStr = p.createdTime ? new Date(p.createdTime).toLocaleDateString("it-IT") : "";
+
+    card.innerHTML = `
+      <img class="post-thumb" src="${escapeHtml(p.picture)}" alt="Creative" onerror="this.src='${DEFAULT_IMAGE}'">
+      <div class="post-card-body">
+        <span class="post-card-date">${dateStr} · ${p.platform}</span>
+        <div class="post-card-caption">${escapeHtml(p.message || "Senza testo")}</div>
+      </div>
+    `;
+
+    card.addEventListener("click", () => {
+      if (m.selectedIds.includes(p.id)) {
+        m.selectedIds = m.selectedIds.filter(id => id !== p.id);
+      } else {
+        m.selectedIds.push(p.id);
+      }
+      renderPostLibrary();
+    });
+
+    container.appendChild(card);
+  });
+}
+
+function renderQueueList() {
+  const m = state.manual;
+  const container = dom.queueList;
+  container.innerHTML = "";
+
+  if (!m.queue.length) {
+    container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 24px;">La coda è vuota. Seleziona i post al punto 2.</div>`;
+    return;
+  }
+
+  m.queue.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "queue-item";
+    row.innerHTML = `
+      <span class="auto-platform-tag ${item.platform === 'Facebook' ? 'facebook' : 'instagram'}">${item.platform}</span>
+      <input type="text" class="queue-name-input" data-index="${index}" value="${escapeHtml(item.adName)}" autocomplete="off">
+      <button class="icon-button remove-queue-btn" data-index="${index}" title="Rimuovi">✕</button>
+    `;
+    container.appendChild(row);
+  });
+
+  container.querySelectorAll(".queue-name-input").forEach(inp => {
+    inp.addEventListener("input", (e) => {
+      const idx = Number(e.target.getAttribute("data-index"));
+      m.queue[idx].adName = e.target.value;
+    });
+  });
+
+  container.querySelectorAll(".remove-queue-btn").forEach(btn => {
+    btn.addEventListener("click", (e) => {
+      const idx = Number(btn.getAttribute("data-index"));
+      m.queue.splice(idx, 1);
+      renderQueueList();
+      dom.metricQueued.textContent = m.queue.length;
+    });
+  });
+}
+
+function setupManualListeners() {
+  // Tabs FB / IG in manual
+  document.querySelectorAll("[data-platform-tab]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("[data-platform-tab]").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      state.manual.activePlatform = btn.getAttribute("data-platform-tab");
+      loadManualPosts();
+    });
+  });
+
+  dom.adAccountSelect.addEventListener("change", async (e) => {
+    state.manual.target.adAccountId = e.target.value;
+    await loadManualSources();
+    await Promise.all([loadManualCampaigns(), loadManualRules()]);
+  });
+
+  dom.campaignSelect.addEventListener("change", async (e) => {
+    state.manual.target.campaignId = e.target.value;
+    await loadManualAdsets();
+  });
+
+  dom.adsetSelect.addEventListener("change", (e) => {
+    state.manual.target.adsetId = e.target.value;
+    renderManual();
+  });
+
+  dom.ruleSelect.addEventListener("change", (e) => {
+    state.manual.target.ruleId = e.target.value;
+    renderManual();
+  });
+
+  dom.sourceSelect.addEventListener("change", (e) => {
+    state.manual.sourceId = e.target.value;
+    loadManualPosts();
+  });
+
+  dom.searchInput.addEventListener("input", () => {
+    renderPostLibrary();
+  });
+
+  dom.selectVisibleBtn.addEventListener("click", () => {
+    state.manual.selectedIds = Array.from(new Set([...state.manual.selectedIds, ...visiblePostIds]));
+    renderPostLibrary();
+  });
+
+  dom.queueSelectedBtn.addEventListener("click", () => {
+    const selectedPosts = state.manual.publishedPosts.filter(p => state.manual.selectedIds.includes(p.id));
+    selectedPosts.forEach(post => {
+      if (!state.manual.queue.some(q => q.sourcePostId === post.id)) {
+        state.manual.queue.push({
+          id: `queue_${Date.now()}_${Math.random().toString(16).slice(2, 6)}`,
+          sourcePostId: post.id,
+          platform: post.platform,
+          pageId: post.pageId,
+          instagramAccountId: post.instagramAccountId,
+          adsetId: state.manual.target.adsetId,
+          ruleId: state.manual.target.ruleId,
+          adName: formatAdName(dom.adNamePattern.value, {
+            platform: post.platform,
+            post,
+            fallback: "Post"
+          })
+        });
+      }
+    });
+    state.manual.selectedIds = [];
+    renderManual();
+    showBanner(`Aggiunti ${selectedPosts.length} post alla coda!`, "info");
+  });
+
+  dom.clearQueueBtn.addEventListener("click", () => {
+    state.manual.queue = [];
+    renderQueueList();
+    dom.metricQueued.textContent = "0";
+  });
+
+  dom.renameQueueBtn.addEventListener("click", () => {
+    state.manual.queue.forEach(item => {
+      const original = state.manual.publishedPosts.find(p => p.id === item.sourcePostId);
+      item.adName = formatAdName(dom.adNamePattern.value, {
+        platform: item.platform,
+        post: original,
+        fallback: "Post"
+      });
+    });
+    renderQueueList();
+    showBanner("Nomi inserzioni aggiornati secondo lo schema", "info");
+  });
+
+  // Create ads
+  const triggerCreateAds = async () => {
+    if (!state.manual.queue.length) {
+      alert("La coda è vuota. Aggiungi prima almeno un post.");
+      return;
+    }
+    if (!state.manual.target.adAccountId) {
+      alert("Seleziona prima un account pubblicitario.");
+      return;
+    }
+
+    const createBtn = dom.createAdsBtn;
+    createBtn.disabled = true;
+    createBtn.textContent = "Creazione in corso...";
+
+    try {
+      const res = await api("/api/meta/create-ads", {
+        method: "POST",
+        body: JSON.stringify({
+          adAccountId: state.manual.target.adAccountId,
+          status: dom.activeStatusCheckbox.checked ? "ACTIVE" : "PAUSED",
+          ads: state.manual.queue
+        })
+      });
+
+      state.manual.queue = [];
+      renderQueueList();
+      dom.metricQueued.textContent = "0";
+
+      dom.resultCard.hidden = false;
+      dom.resultList.innerHTML = (res.data || []).map(r => `
+        <div style="padding: 10px; border-bottom: 1px solid var(--border-subtle);">
+          <strong style="color: ${r.ok ? 'var(--accent-emerald)' : 'var(--accent-rose)'};">
+            ${r.ok ? '✓ Creata:' : '✕ Errore:'} ${escapeHtml(r.adName)}
+          </strong>
+          ${r.ok ? `<div style="font-size: 0.8rem; color: var(--text-muted);">Ad ID: ${r.adId} ${r.ruleMessage ? `· ${escapeHtml(r.ruleMessage)}` : ''}</div>` : `<div style="color: var(--accent-rose); font-size: 0.8rem;">${escapeHtml(r.error)}</div>`}
+        </div>
+      `).join("");
+
+      dom.resultCard.scrollIntoView({ behavior: "smooth" });
+      showBanner("Creazione inserzioni completata!", "info");
+      loadLogs();
+    } catch (err) {
+      alert(`Errore creazione inserzioni: ${err.message}`);
+    } finally {
+      createBtn.disabled = false;
+      createBtn.textContent = "Crea inserzioni in pausa";
+    }
+  };
+
+  dom.createAdsBtn.addEventListener("click", triggerCreateAds);
+  dom.createAdsBtnBottom.addEventListener("click", triggerCreateAds);
+
+  // Export Dialog
+  dom.exportBtn.addEventListener("click", () => {
+    dom.exportOutput.value = JSON.stringify({
+      target: state.manual.target,
+      queue: state.manual.queue
+    }, null, 2);
+    dom.exportDialog.showModal();
+  });
+
+  dom.copyExportBtn.addEventListener("click", () => {
+    navigator.clipboard.writeText(dom.exportOutput.value);
+    dom.copyExportBtn.textContent = "Copiato!";
+    setTimeout(() => { dom.copyExportBtn.textContent = "Copia Dati"; }, 2000);
+  });
+}
+
+// -----------------------------------------------------------------------------
+// App Initialization
+// -----------------------------------------------------------------------------
+async function initApp() {
+  setupTabs();
+  setupModal();
+  setupGlobalRun();
+  setupGuideActions();
+  setupManualListeners();
+
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get("login") === "ok") {
+    showBanner("✓ Accesso con Facebook completato! Token Meta attivo per 60 giorni.", "info");
+    window.history.replaceState({}, document.title, window.location.pathname);
+  } else if (urlParams.get("login_error")) {
+    showBanner("✕ Errore login: " + decodeURIComponent(urlParams.get("login_error")), "danger");
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }
+
+  await Promise.all([
+    loadAutomations(),
+    loadSystemStatus(),
+    loadLogs(),
+    loadManualConfig()
+  ]);
+}
+
+window.addEventListener("DOMContentLoaded", initApp);
+

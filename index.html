@@ -3,191 +3,592 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Bulk Sponsor Post</title>
+    <title>AutoSponsorAds - Automazione e Sponsorizzazione Meta Ads</title>
+    <meta name="description" content="Piattaforma per la sponsorizzazione automatica e bulk di post e reel Facebook e Instagram su Meta Ads.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <main class="guided-shell">
-      <header class="app-header">
-        <div>
-          <p class="eyebrow">Bulk sponsor</p>
-          <h1>Crea inserzioni da post gia pubblicati</h1>
+    <!-- App Navigation Header -->
+    <header class="main-nav" id="mainNav">
+      <div class="nav-container">
+        <div class="brand">
+          <div class="brand-badge">⚡</div>
+          <div>
+            <h1 class="brand-title">AutoSponsorAds</h1>
+            <span class="brand-subtitle">Meta Ads Automation Engine</span>
+          </div>
         </div>
-        <div class="header-actions">
-          <button class="secondary-button" id="exportBtn" type="button">Esporta</button>
-          <button class="primary-button" id="createAdsBtn" type="button">Crea inserzioni in pausa</button>
-        </div>
-      </header>
 
-      <section class="status-strip" aria-label="Riepilogo">
-        <div>
-          <span>Account</span>
-          <strong id="summaryAccount">Non selezionato</strong>
+        <nav class="nav-tabs" role="tablist" aria-label="Sezioni applicazione">
+          <button class="nav-tab active" id="tabBtnAutomations" type="button" role="tab" aria-selected="true" data-tab="automationsView">
+            <span>⚡ Automazioni</span>
+            <span class="tab-badge" id="badgeActiveCount">0</span>
+          </button>
+          <button class="nav-tab" id="tabBtnManual" type="button" role="tab" aria-selected="false" data-tab="manualView">
+            <span>📦 Sponsor Manuale</span>
+          </button>
+          <button class="nav-tab" id="tabBtnLogs" type="button" role="tab" aria-selected="false" data-tab="logsView">
+            <span>📋 Storico & Log</span>
+          </button>
+          <button class="nav-tab" id="tabBtnGuide" type="button" role="tab" aria-selected="false" data-tab="guideView">
+            <span>⚙️ Setup Render</span>
+          </button>
+        </nav>
+
+        <div class="nav-actions">
+          <button class="btn btn-secondary btn-sm" id="globalRunBtn" type="button" title="Avvia subito il controllo di tutte le automazioni">
+            <span class="spinner" id="globalRunSpinner" hidden></span>
+            <span id="globalRunText">▶ Esegui Tutto Ora</span>
+          </button>
+          <button class="btn btn-primary btn-sm" id="openNewAutoModalBtn" type="button">
+            <span>+ Nuova Automazione</span>
+          </button>
         </div>
-        <div>
-          <span>Campagna</span>
-          <strong id="summaryCampaign">Non selezionata</strong>
+      </div>
+    </header>
+
+    <main class="main-content">
+      <!-- Top Global Notification Banner -->
+      <div class="banner banner-info" id="globalBanner" hidden>
+        <span class="banner-icon">ℹ️</span>
+        <span class="banner-text" id="globalBannerText"></span>
+        <button class="banner-close" id="globalBannerClose" type="button">✕</button>
+      </div>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 1: AUTOMAZIONI (AUTO-PILOT)                               -->
+      <!-- ============================================================== -->
+      <section class="app-view active" id="automationsView" role="tabpanel" aria-labelledby="tabBtnAutomations">
+        <!-- Summary Stats Strip -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <span class="kpi-label">Automazioni Attive</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiActiveAutomations">0</strong>
+              <span class="kpi-sub" id="kpiTotalAutomations">su 0 totali</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Post Sponsorizzati in Auto</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiProcessedPosts">0</strong>
+              <span class="kpi-sub">totali memorizzati</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Stato Database</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiDbType">SQLite</strong>
+              <span class="kpi-sub badge-tag" id="kpiDbStatus">Locale</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">Connessione Meta API</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiMetaStatus">Verifica...</strong>
+              <span class="status-indicator" id="kpiMetaIndicator"></span>
+            </div>
+          </div>
         </div>
-        <div>
-          <span>Gruppo inserzioni</span>
-          <strong id="summaryAdset">Non selezionato</strong>
+
+        <!-- Automation Controls Header -->
+        <div class="section-header">
+          <div>
+            <h2>Regole di Monitoraggio Attive</h2>
+            <p>I profili e le pagine configurati vengono controllati periodicamente. I nuovi contenuti vengono sponsorizzati in automatico.</p>
+          </div>
+          <div class="section-actions">
+            <button class="btn btn-ghost" id="refreshAutomationsBtn" type="button">🔄 Aggiorna</button>
+            <button class="btn btn-primary" id="createAutomationBannerBtn" type="button">+ Aggiungi Automazione</button>
+          </div>
         </div>
-        <div>
-          <span>Post in coda</span>
-          <strong id="metricQueued">0</strong>
+
+        <!-- Automations List Grid -->
+        <div class="automations-grid" id="automationsGrid">
+          <!-- Dynamic cards injected by app.js -->
+          <div class="empty-state" id="automationsEmptyState">
+            <div class="empty-icon">🤖</div>
+            <h3>Nessuna automazione attiva</h3>
+            <p>Crea la tua prima regola per monitorare una pagina Facebook o un profilo Instagram e sponsorizzare automaticamente ogni nuovo post pubblicato.</p>
+            <button class="btn btn-primary" id="emptyCreateBtn" type="button">+ Crea Prima Automazione</button>
+          </div>
         </div>
       </section>
 
-      <section class="step-card">
-        <div class="step-heading">
-          <div class="step-number">1</div>
+      <!-- ============================================================== -->
+      <!-- VIEW 2: SPONSOR MANUALE (BULK SPONSOR ESISTENTE)              -->
+      <!-- ============================================================== -->
+      <section class="app-view" id="manualView" role="tabpanel" aria-labelledby="tabBtnManual" hidden>
+        <div class="view-header-strip">
           <div>
-            <h2>Scegli dove creare le inserzioni</h2>
-            <p>Filtra le liste, controlla il riepilogo e poi passa ai post.</p>
+            <h2>Sponsorizzazione Manuale in Bulk</h2>
+            <p>Seleziona i post storici già pubblicati su Facebook o Instagram e crea inserzioni in blocco.</p>
           </div>
-          <button class="ghost-button" id="refreshTargetBtn" type="button">Ricarica</button>
+          <div class="header-actions">
+            <button class="btn btn-secondary" id="exportBtn" type="button">Esporta Batch</button>
+            <button class="btn btn-primary" id="createAdsBtn" type="button">Crea inserzioni in pausa</button>
+          </div>
         </div>
 
-        <div class="path-helper" aria-label="Percorso selezione">
-          <div class="path-step" id="pathAccount">
+        <section class="status-strip" aria-label="Riepilogo">
+          <div>
             <span>Account</span>
-            <strong>Da scegliere</strong>
+            <strong id="summaryAccount">Non selezionato</strong>
           </div>
-          <div class="path-step" id="pathCampaign">
+          <div>
             <span>Campagna</span>
-            <strong>Da scegliere</strong>
+            <strong id="summaryCampaign">Non selezionata</strong>
           </div>
-          <div class="path-step" id="pathAdset">
-            <span>Gruppo</span>
-            <strong>Da scegliere</strong>
+          <div>
+            <span>Gruppo inserzioni</span>
+            <strong id="summaryAdset">Non selezionato</strong>
           </div>
-          <div class="path-step" id="pathRule">
-            <span>Regola</span>
-            <strong>Facoltativa</strong>
+          <div>
+            <span>Post in coda</span>
+            <strong id="metricQueued">0</strong>
+          </div>
+        </section>
+
+        <!-- Step 1: Destination -->
+        <div class="step-card">
+          <div class="step-heading">
+            <div class="step-number">1</div>
+            <div>
+              <h3>Scegli dove creare le inserzioni</h3>
+              <p>Filtra le liste, seleziona la destinazione e passa ai post.</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="refreshTargetBtn" type="button">Ricarica</button>
+          </div>
+
+          <div class="path-helper" aria-label="Percorso selezione">
+            <div class="path-step" id="pathAccount">
+              <span>Account</span>
+              <strong>Da scegliere</strong>
+            </div>
+            <div class="path-step" id="pathCampaign">
+              <span>Campagna</span>
+              <strong>Da scegliere</strong>
+            </div>
+            <div class="path-step" id="pathAdset">
+              <span>Gruppo</span>
+              <strong>Da scegliere</strong>
+            </div>
+            <div class="path-step" id="pathRule">
+              <span>Regola</span>
+              <strong>Facoltativa</strong>
+            </div>
+          </div>
+
+          <div class="target-grid">
+            <label>
+              Cerca account
+              <input id="accountSearch" type="search" placeholder="Nome account..." autocomplete="off">
+            </label>
+            <label>
+              Cerca campagna
+              <input id="campaignSearch" type="search" placeholder="Nome campagna..." autocomplete="off">
+            </label>
+            <label>
+              Cerca gruppo
+              <input id="adsetSearch" type="search" placeholder="Nome gruppo..." autocomplete="off">
+            </label>
+            <label>
+              Cerca regola
+              <input id="ruleSearch" type="search" placeholder="Nome regola..." autocomplete="off">
+            </label>
+            <label>
+              Account pubblicitario
+              <select id="adAccountSelect"></select>
+            </label>
+            <label>
+              Campagna
+              <select id="campaignSelect"></select>
+            </label>
+            <label>
+              Gruppo inserzioni
+              <select id="adsetSelect"></select>
+            </label>
+            <label>
+              Regola esistente
+              <select id="ruleSelect"></select>
+            </label>
+            <label class="wide-field">
+              Schema nome inserzione
+              <input id="adNamePattern" type="text" value="ADV - {platform} - {post}" autocomplete="off">
+            </label>
+          </div>
+
+          <div class="destination-panel" id="destinationPanel"></div>
+        </div>
+
+        <!-- Step 2: Post Selection -->
+        <div class="step-card">
+          <div class="step-heading">
+            <div class="step-number">2</div>
+            <div>
+              <h3>Scegli i post da sponsorizzare</h3>
+              <p>Passa tra Facebook e Instagram, scegli la fonte e aggiungi i post alla coda.</p>
+            </div>
+          </div>
+
+          <div class="post-controls">
+            <div class="tabs" role="tablist" aria-label="Piattaforma post">
+              <button class="active" type="button" data-platform-tab="Facebook">Facebook</button>
+              <button type="button" data-platform-tab="Instagram">Instagram</button>
+            </div>
+            <label>
+              Fonte post
+              <select id="sourceSelect"></select>
+            </label>
+            <div class="source-note" id="sourceNote"></div>
+            <label class="search-field">
+              Cerca
+              <input id="searchInput" type="search" placeholder="Testo, ID o link..." autocomplete="off">
+            </label>
+            <button class="btn btn-secondary" id="selectVisibleBtn" type="button">Seleziona visibili</button>
+            <button class="btn btn-primary" id="queueSelectedBtn" type="button">Aggiungi alla coda</button>
+          </div>
+
+          <div class="mini-stats">
+            <span><strong id="metricAvailable">0</strong> disponibili</span>
+            <span><strong id="metricSelected">0</strong> selezionati</span>
+          </div>
+
+          <div class="post-library" id="postLibrary"></div>
+        </div>
+
+        <!-- Step 3: Queue & Create -->
+        <div class="step-card">
+          <div class="step-heading">
+            <div class="step-number">3</div>
+            <div>
+              <h3>Controlla la coda e crea</h3>
+              <p>Puoi rinominare ogni inserzione prima di crearla e decidere se pubblicarla attiva o in pausa.</p>
+            </div>
+            <button class="btn btn-ghost btn-sm" id="clearQueueBtn" type="button">Svuota coda</button>
+          </div>
+
+          <div class="queue-list" id="queueList"></div>
+
+          <div class="final-actions">
+            <button class="btn btn-secondary" id="renameQueueBtn" type="button">Aggiorna nomi in coda</button>
+            <label class="toggle-row">
+              <input id="activeStatusCheckbox" type="checkbox">
+              <span>Crea inserzione attiva</span>
+            </label>
+            <button class="btn btn-primary" id="createAdsBtnBottom" type="button">Crea inserzioni in pausa</button>
           </div>
         </div>
 
-        <div class="target-grid">
-          <label>
-            Cerca account
-            <input id="accountSearch" type="search" placeholder="Nome account..." autocomplete="off">
-          </label>
-          <label>
-            Cerca campagna
-            <input id="campaignSearch" type="search" placeholder="Nome campagna..." autocomplete="off">
-          </label>
-          <label>
-            Cerca gruppo
-            <input id="adsetSearch" type="search" placeholder="Nome gruppo..." autocomplete="off">
-          </label>
-          <label>
-            Cerca regola
-            <input id="ruleSearch" type="search" placeholder="Nome regola..." autocomplete="off">
-          </label>
-          <label>
-            Account pubblicitario
-            <select id="adAccountSelect"></select>
-          </label>
-          <label>
-            Campagna
-            <select id="campaignSelect"></select>
-          </label>
-          <label>
-            Gruppo inserzioni
-            <select id="adsetSelect"></select>
-          </label>
-          <label>
-            Regola esistente
-            <select id="ruleSelect"></select>
-          </label>
-          <label class="wide-field">
-            Schema nome inserzione
-            <input id="adNamePattern" type="text" value="ADV - {platform} - {post}" autocomplete="off">
-          </label>
+        <!-- Results Card -->
+        <div class="step-card result-card" id="resultCard" hidden>
+          <div class="step-heading">
+            <div class="step-number">✓</div>
+            <div>
+              <h3>Risultato creazione inserzioni</h3>
+              <p>Riepilogo delle inserzioni create su Meta e stato delle regole automatiche.</p>
+            </div>
+          </div>
+          <div class="result-list" id="resultList"></div>
         </div>
-
-        <div class="destination-panel" id="destinationPanel"></div>
       </section>
 
-      <section class="step-card">
-        <div class="step-heading">
-          <div class="step-number">2</div>
+      <!-- ============================================================== -->
+      <!-- VIEW 3: STORICO E LOG                                         -->
+      <!-- ============================================================== -->
+      <section class="app-view" id="logsView" role="tabpanel" aria-labelledby="tabBtnLogs" hidden>
+        <div class="view-header-strip">
           <div>
-            <h2>Scegli i post da sponsorizzare</h2>
-            <p>Passa tra Facebook e Instagram, scegli la fonte e aggiungi i post alla coda.</p>
+            <h2>Storico Controlli & Inserzioni Create</h2>
+            <p>Traccia dettagliata di ogni controllo periodico, dei post individuati e delle inserzioni create.</p>
+          </div>
+          <button class="btn btn-secondary" id="refreshLogsBtn" type="button">🔄 Aggiorna Log</button>
+        </div>
+
+        <div class="two-col-grid">
+          <!-- Execution Runs Log -->
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Esecuzioni del Bot</h3>
+              <span class="sub-badge" id="logsCountBadge">0 esecuzioni</span>
+            </div>
+            <div class="table-container">
+              <table class="data-table" id="runsTable">
+                <thead>
+                  <tr>
+                    <th>Data / Ora</th>
+                    <th>Automazione</th>
+                    <th>Trigger</th>
+                    <th>Trovati</th>
+                    <th>Creati</th>
+                    <th>Errori</th>
+                  </tr>
+                </thead>
+                <tbody id="runsTableBody">
+                  <tr><td colspan="6" class="text-muted text-center py-4">Nessun log presente</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Processed Posts Log -->
+          <div class="panel">
+            <div class="panel-header">
+              <h3>Post Sponsorizzati</h3>
+              <span class="sub-badge" id="postsCountBadge">0 post memorizzati</span>
+            </div>
+            <div class="table-container">
+              <table class="data-table" id="postsTable">
+                <thead>
+                  <tr>
+                    <th>Piattaforma</th>
+                    <th>Nome Inserzione / Post</th>
+                    <th>Ad ID</th>
+                    <th>Stato</th>
+                    <th>Data</th>
+                  </tr>
+                </thead>
+                <tbody id="postsTableBody">
+                  <tr><td colspan="5" class="text-muted text-center py-4">Nessun post sponsorizzato ancora</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
-
-        <div class="post-controls">
-          <div class="tabs" role="tablist" aria-label="Piattaforma post">
-            <button class="active" type="button" data-platform-tab="Facebook">Facebook</button>
-            <button type="button" data-platform-tab="Instagram">Instagram</button>
-          </div>
-          <label>
-            Fonte post
-            <select id="sourceSelect"></select>
-          </label>
-          <div class="source-note" id="sourceNote"></div>
-          <label class="search-field">
-            Cerca
-            <input id="searchInput" type="search" placeholder="Testo, ID o link..." autocomplete="off">
-          </label>
-          <button class="secondary-button" id="selectVisibleBtn" type="button">Seleziona visibili</button>
-          <button class="primary-button" id="queueSelectedBtn" type="button">Aggiungi selezionati alla coda</button>
-        </div>
-
-        <div class="mini-stats">
-          <span><strong id="metricAvailable">0</strong> disponibili</span>
-          <span><strong id="metricSelected">0</strong> selezionati</span>
-        </div>
-
-        <div class="post-library" id="postLibrary"></div>
       </section>
 
-      <section class="step-card">
-        <div class="step-heading">
-          <div class="step-number">3</div>
+      <!-- ============================================================== -->
+      <!-- VIEW 4: GUIDA SETUP RENDER & STATO                             -->
+      <!-- ============================================================== -->
+      <section class="app-view" id="guideView" role="tabpanel" aria-labelledby="tabBtnGuide" hidden>
+        <div class="view-header-strip">
           <div>
-            <h2>Controlla la coda e crea</h2>
-            <p>Puoi rinominare ogni inserzione prima di crearla e decidere se pubblicarla subito.</p>
+            <h2>Configurazione Render.com & Meta Health</h2>
+            <p>Istruzioni passo-passo per rendere l'automazione autonoma su Render Free senza spendere nulla.</p>
           </div>
-          <button class="ghost-button" id="clearQueueBtn" type="button">Svuota coda</button>
+          <button class="btn btn-secondary" id="checkMetaHealthBtn" type="button">🩺 Verifica Connessione Meta</button>
         </div>
 
-        <div class="queue-list" id="queueList"></div>
+        <div class="guide-cards-grid">
+          <!-- Meta Token Diagnostic Card -->
+          <div class="guide-card">
+            <div class="guide-card-icon">🔑</div>
+            <h3>Stato Token Meta</h3>
+            <p>Verifica se il token Meta configurato ha i permessi necessari ed è attivo.</p>
+            <div class="token-diagnostic-box" id="tokenDiagnosticBox">
+              <div class="diag-item">
+                <span>Stato Token:</span>
+                <strong id="diagTokenStatus">In verifica...</strong>
+              </div>
+              <div class="diag-item">
+                <span>Account Collegato:</span>
+                <strong id="diagTokenUser">-</strong>
+              </div>
+              <div class="diag-item">
+                <span>Tipo Database:</span>
+                <strong id="diagDbType">-</strong>
+              </div>
+              <a href="/auth/facebook" class="btn btn-primary" id="loginFbBtn" style="margin-top: 10px; text-decoration: none; width: 100%; text-align: center;">
+                🔵 Accedi con Facebook (Login Rapido)
+              </a>
+              <div style="margin-top: 12px; border-top: 1px solid var(--border-subtle); padding-top: 12px;">
+                <span style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">Oppure incolla Token manualmente:</span>
+                <div style="display: flex; gap: 8px;">
+                  <input type="password" id="manualTokenInput" placeholder="Incolla token EAA..." autocomplete="off">
+                  <button class="btn btn-secondary btn-sm" id="saveManualTokenBtn" type="button">Salva</button>
+                </div>
+              </div>
+            </div>
+          </div>
 
-        <div class="final-actions">
-          <button class="secondary-button" id="renameQueueBtn" type="button">Aggiorna nomi in coda</button>
-          <label class="toggle-row">
-            <input id="activeStatusCheckbox" type="checkbox">
-            <span>Crea inserzione attiva</span>
-          </label>
-          <button class="primary-button" id="createAdsBtnBottom" type="button">Crea inserzioni in pausa</button>
-        </div>
-      </section>
+          <!-- External Cron Setup Card -->
+          <div class="guide-card">
+            <div class="guide-card-icon">⏰</div>
+            <h3>Schedulazione Gratuita (Render Free)</h3>
+            <p>Poiché Render Free va in sleep dopo 15 minuti, usa un servizio gratuito come <strong>cron-job.org</strong> o <strong>GitHub Actions</strong> per risvegliare l'app ed eseguire il controllo.</p>
+            
+            <div class="code-box">
+              <div class="code-header">
+                <span>URL Webhook Cron</span>
+                <button class="btn-copy" id="copyCronUrlBtn" type="button">Copia URL</button>
+              </div>
+              <code id="cronWebhookUrl">https://&lt;tua-app&gt;.onrender.com/api/cron/check-and-sponsor</code>
+            </div>
 
-      <section class="step-card result-card" id="resultCard" hidden>
-        <div class="step-heading">
-          <div class="step-number">4</div>
-          <div>
-            <h2>Risultato creazione</h2>
-            <p>Qui vedi cosa e stato creato su Meta e cosa richiede attenzione.</p>
+            <div class="code-box">
+              <div class="code-header">
+                <span>Header di Autorizzazione</span>
+                <button class="btn-copy" id="copyCronHeaderBtn" type="button">Copia Header</button>
+              </div>
+              <code id="cronAuthHeader">Authorization: Bearer &lt;CRON_SECRET&gt;</code>
+            </div>
+
+            <div class="tip-box">
+              💡 <strong>Consiglio:</strong> Imposta il cron su <em>cron-job.org</em> ogni 12 ore (es. alle 09:00 e alle 21:00). Risveglierà Render, sponsorizzerà i nuovi contenuti e tornerà a riposare a costo zero.
+            </div>
+          </div>
+
+          <!-- Database Neon Setup Card -->
+          <div class="guide-card">
+            <div class="guide-card-icon">🗄️</div>
+            <h3>Database Persistente Cloud</h3>
+            <p>Il disco di Render Free è effimero. Per non perdere lo storico e le regole tra un riavvio e l'altro:</p>
+            <ol class="guide-steps">
+              <li>Crea un database gratuito su <strong>Neon.tech</strong> o <strong>Supabase</strong> (PostgreSQL).</li>
+              <li>Copia la stringa di connessione (es. <code>postgresql://...</code>).</li>
+              <li>Aggiungi la variabile d'ambiente <code>DATABASE_URL</code> nel pannello Render.</li>
+              <li>L'applicazione configurerà automaticamente tutte le tabelle al primo avvio!</li>
+            </ol>
           </div>
         </div>
-        <div class="result-list" id="resultList"></div>
       </section>
     </main>
 
-    <dialog id="exportDialog">
+    <!-- ============================================================== -->
+    <!-- MODAL: CREA / MODIFICA AUTOMAZIONE                             -->
+    <!-- ============================================================== -->
+    <dialog class="app-dialog" id="automationModal">
+      <form id="automationForm" method="dialog">
+        <div class="dialog-header">
+          <h2 id="modalTitle">Nuova Regola di Automazione</h2>
+          <button class="icon-button" id="closeModalBtn" value="cancel" type="button" aria-label="Chiudi">✕</button>
+        </div>
+
+        <div class="dialog-body">
+          <input type="hidden" id="autoFormId">
+
+          <!-- 1. General Info -->
+          <div class="form-group">
+            <label for="autoNameInput">Nome Regola <span class="required">*</span></label>
+            <input id="autoNameInput" type="text" placeholder="Es. Auto Sponsor - Reel Instagram Azienda" required autocomplete="off">
+          </div>
+
+          <!-- 2. Platform & Source -->
+          <div class="form-row">
+            <div class="form-group">
+              <label>Piattaforma <span class="required">*</span></label>
+              <div class="platform-toggle-group">
+                <button class="platform-btn active" id="btnPlatformFB" type="button" data-platform="Facebook">
+                  <span class="icon">📘</span> Facebook
+                </button>
+                <button class="platform-btn" id="btnPlatformIG" type="button" data-platform="Instagram">
+                  <span class="icon">📸</span> Instagram
+                </button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="autoSourceSelect">Fonte Post/Reel <span class="required">*</span></label>
+              <select id="autoSourceSelect" required>
+                <option value="">Caricamento fonti...</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 3. Target Destination -->
+          <div class="form-row three-cols">
+            <div class="form-group">
+              <label for="autoAdAccountSelect">Account Ads <span class="required">*</span></label>
+              <select id="autoAdAccountSelect" required></select>
+            </div>
+            <div class="form-group">
+              <label for="autoCampaignSelect">Campagna Target <span class="required">*</span></label>
+              <select id="autoCampaignSelect" required></select>
+            </div>
+            <div class="form-group">
+              <label for="autoAdsetSelect">Gruppo Inserzioni (Ad Set) <span class="required">*</span></label>
+              <select id="autoAdsetSelect" required></select>
+            </div>
+          </div>
+
+          <!-- 4. Rule & Parameters -->
+          <div class="form-row three-cols">
+            <div class="form-group">
+              <label for="autoRuleSelect">Regola Automatica Meta (Opzionale)</label>
+              <select id="autoRuleSelect">
+                <option value="">Nessuna regola collegata</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="autoIntervalSelect">Frequenza Controllo</label>
+              <select id="autoIntervalSelect">
+                <option value="6">Ogni 6 ore</option>
+                <option value="12" selected>Ogni 12 ore (Consigliato)</option>
+                <option value="24">Ogni 24 ore (1 volta al giorno)</option>
+                <option value="1">Ogni ora (Test)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="autoAdStatusSelect">Stato Inserzione Iniziale</label>
+              <select id="autoAdStatusSelect">
+                <option value="PAUSED" selected>In Pausa (Revisione)</option>
+                <option value="ACTIVE">Attiva Subito</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 5. Naming Pattern -->
+          <div class="form-group">
+            <label for="autoNamingPattern">Schema Nome Inserzione</label>
+            <input id="autoNamingPattern" type="text" value="ADV - {platform} - {post}" autocomplete="off">
+            <div class="tag-pills">
+              <span>Token disponibili:</span>
+              <button class="pill" type="button" data-tag="{platform}">{platform}</button>
+              <button class="pill" type="button" data-tag="{post}">{post}</button>
+              <button class="pill" type="button" data-tag="{date}">{date}</button>
+              <button class="pill" type="button" data-tag="{id}">{id}</button>
+            </div>
+          </div>
+
+          <!-- 6. Filter Keywords -->
+          <div class="form-group">
+            <label for="autoFilterKeywords">Filtro Parole Chiave / Hashtag (Opzionale)</label>
+            <input id="autoFilterKeywords" type="text" placeholder="Es. #sponsor, #promo, offerta (lascia vuoto per tutti i post)" autocomplete="off">
+            <small class="help-text">Se specificato, solo i post contenenti almeno una di queste parole verranno sponsorizzati.</small>
+          </div>
+        </div>
+
+        <div class="dialog-actions">
+          <button class="btn btn-ghost" id="cancelModalBtn" type="button">Annulla</button>
+          <button class="btn btn-primary" id="saveAutomationBtn" type="submit">Salva Regola</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Run Report Dialog -->
+    <dialog class="app-dialog" id="runReportDialog">
       <form method="dialog">
         <div class="dialog-header">
-          <h2>Dati batch</h2>
-          <button class="icon-button" value="close" type="submit" aria-label="Chiudi">x</button>
+          <h2 id="reportTitle">Esito Esecuzione</h2>
+          <button class="icon-button" value="close" type="submit" aria-label="Chiudi">✕</button>
         </div>
-        <textarea id="exportOutput" rows="18" readonly></textarea>
+        <div class="dialog-body" id="reportContent">
+          <!-- Dynamic report inserted -->
+        </div>
         <div class="dialog-actions">
-          <button class="secondary-button" id="copyExportBtn" type="button">Copia dati</button>
-          <button class="primary-button" value="close" type="submit">Fine</button>
+          <button class="btn btn-primary" value="close" type="submit">Chiudi</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Export Dialog -->
+    <dialog class="app-dialog" id="exportDialog">
+      <form method="dialog">
+        <div class="dialog-header">
+          <h2>Dati Batch Esportati</h2>
+          <button class="icon-button" value="close" type="submit" aria-label="Chiudi">✕</button>
+        </div>
+        <div class="dialog-body">
+          <textarea id="exportOutput" rows="14" readonly class="code-textarea"></textarea>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn btn-secondary" id="copyExportBtn" type="button">Copia Dati</button>
+          <button class="btn btn-primary" value="close" type="submit">Fine</button>
         </div>
       </form>
     </dialog>
