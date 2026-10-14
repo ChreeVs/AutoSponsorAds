@@ -143,6 +143,8 @@ async function handleApi(req, res, url) {
         ad_status: body.ad_status || "PAUSED",
         check_interval_hours: Number(body.check_interval_hours) || 12,
         filter_keywords: body.filter_keywords || "",
+        start_time: body.start_time || new Date().toISOString(),
+        adset_full_strategy: body.adset_full_strategy || "ROTATE_OLDEST",
         created_at: new Date().toISOString()
       };
 

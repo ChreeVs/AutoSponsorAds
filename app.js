@@ -128,6 +128,12 @@ const dom = {
   autoAdStatusSelect: document.getElementById("autoAdStatusSelect"),
   autoNamingPattern: document.getElementById("autoNamingPattern"),
   autoFilterKeywords: document.getElementById("autoFilterKeywords"),
+  autoStartTimeInput: document.getElementById("autoStartTimeInput"),
+  autoAdsetStrategySelect: document.getElementById("autoAdsetStrategySelect"),
+  liveAdNamePreview: document.getElementById("liveAdNamePreview"),
+  sourcePreviewContainer: document.getElementById("sourcePreviewContainer"),
+  sourcePreviewCards: document.getElementById("sourcePreviewCards"),
+  sourcePreviewBadge: document.getElementById("sourcePreviewBadge"),
 
   // Logs & Tables
   refreshLogsBtn: document.getElementById("refreshLogsBtn"),
@@ -321,6 +327,12 @@ function renderAutomationsGrid() {
           <span>Frequenza</span>
           <strong>Ogni ${item.check_interval_hours || 12}h</strong>
         </div>
+        <div class="auto-detail-item">
+          <span>Inizio Monitoraggio</span>
+          <strong title="Zero retroattività: post prima di questa data vengono ignorati">
+            🛡️ ${item.start_time ? new Date(item.start_time).toLocaleDateString('it-IT') : 'Creazione'}
+          </strong>
+        </div>
       </div>
 
       <div class="auto-status-footer">
@@ -477,6 +489,58 @@ function updateKpis() {
 // -----------------------------------------------------------------------------
 // Modal: Nuova / Modifica Automazione
 // -----------------------------------------------------------------------------
+function updateLiveAdNamePreview() {
+  const pattern = dom.autoNamingPattern?.value || "ADV - {platform} - {post}";
+  const preview = pattern
+    .replace(/\{platform\}/gi, state.modalSelectedPlatform === "Facebook" ? "FB" : "IG")
+    .replace(/\{post\}/gi, "Esempio Titolo Post Recente")
+    .replace(/\{date\}/gi, new Date().toISOString().slice(0, 10))
+    .replace(/\{id\}/gi, "891234");
+  if (dom.liveAdNamePreview) dom.liveAdNamePreview.textContent = preview;
+}
+
+async function loadSourcePreviewPosts() {
+  const sourceId = dom.autoSourceSelect.value;
+  if (!sourceId) {
+    if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = true;
+    return;
+  }
+  const sourceOpt = dom.autoSourceSelect.selectedOptions[0];
+  const pageId = sourceOpt?.getAttribute("data-page-id") || "";
+  const endpoint = state.modalSelectedPlatform === "Facebook"
+    ? `/api/meta/facebook-posts?pageId=${encodeURIComponent(sourceId)}&limit=3`
+    : `/api/meta/instagram-media?instagramId=${encodeURIComponent(sourceId)}&pageId=${encodeURIComponent(pageId)}&limit=3`;
+
+  try {
+    const payload = await api(endpoint);
+    const posts = payload.data || [];
+    if (!posts.length) {
+      if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = true;
+      return;
+    }
+    if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = false;
+    if (dom.sourcePreviewBadge) dom.sourcePreviewBadge.textContent = `${posts.length} post storici`;
+    if (dom.sourcePreviewCards) {
+      dom.sourcePreviewCards.innerHTML = posts.map(p => {
+        const dateStr = p.created_time || p.timestamp ? new Date(p.created_time || p.timestamp).toLocaleDateString("it-IT") : "";
+        const text = p.message || p.caption || "Nessun testo";
+        const pic = p.full_picture || p.media_url || p.thumbnail_url || DEFAULT_IMAGE;
+        return `
+          <div class="source-mini-card">
+            <img class="source-mini-thumb" src="${escapeHtml(pic)}" onerror="this.src='${DEFAULT_IMAGE}'" alt="Thumb">
+            <div class="source-mini-body">
+              <span>Pubblicato il: ${dateStr}</span>
+              <p title="${escapeHtml(text)}">${escapeHtml(text)}</p>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+  } catch {
+    if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = true;
+  }
+}
+
 function setupModal() {
   dom.openNewAutoModalBtn.addEventListener("click", () => openNewModal());
   dom.createAutomationBannerBtn?.addEventListener("click", () => openNewModal());
@@ -488,9 +552,15 @@ function setupModal() {
   // Platform Toggle inside Modal
   dom.btnPlatformFB.addEventListener("click", () => {
     setModalPlatform("Facebook");
+    updateLiveAdNamePreview();
   });
   dom.btnPlatformIG.addEventListener("click", () => {
     setModalPlatform("Instagram");
+    updateLiveAdNamePreview();
+  });
+
+  dom.autoSourceSelect.addEventListener("change", () => {
+    loadSourcePreviewPosts();
   });
 
   // Dynamic cascades inside Modal
@@ -506,12 +576,17 @@ function setupModal() {
     await populateModalAdsets(accountId, campaignId);
   });
 
+  dom.autoNamingPattern.addEventListener("input", () => {
+    updateLiveAdNamePreview();
+  });
+
   // Token Pills in Naming Pattern
   document.querySelectorAll(".tag-pills .pill").forEach(pill => {
     pill.addEventListener("click", () => {
       const tag = pill.getAttribute("data-tag");
       const input = dom.autoNamingPattern;
       input.value += ` ${tag}`;
+      updateLiveAdNamePreview();
       input.focus();
     });
   });
@@ -528,6 +603,7 @@ function setModalPlatform(platform) {
   dom.btnPlatformFB.classList.toggle("active", platform === "Facebook");
   dom.btnPlatformIG.classList.toggle("active", platform === "Instagram");
   populateModalSources(platform);
+  updateLiveAdNamePreview();
 }
 
 function openNewModal() {
@@ -539,9 +615,20 @@ function openNewModal() {
   dom.autoFilterKeywords.value = "";
   dom.autoIntervalSelect.value = "12";
   dom.autoAdStatusSelect.value = "PAUSED";
+  if (dom.autoAdsetStrategySelect) dom.autoAdsetStrategySelect.value = "ROTATE_OLDEST";
+
+  // Default start time to NOW in local datetime-local format
+  if (dom.autoStartTimeInput) {
+    const now = new Date();
+    const localNow = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    dom.autoStartTimeInput.value = localNow;
+  }
+
+  if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = true;
 
   setModalPlatform("Facebook");
   populateModalAdAccounts();
+  updateLiveAdNamePreview();
   dom.automationModal.showModal();
 }
 
@@ -557,10 +644,20 @@ function openEditModal(id) {
   dom.autoFilterKeywords.value = item.filter_keywords || "";
   dom.autoIntervalSelect.value = String(item.check_interval_hours || 12);
   dom.autoAdStatusSelect.value = item.ad_status || "PAUSED";
+  if (dom.autoAdsetStrategySelect) dom.autoAdsetStrategySelect.value = item.adset_full_strategy || "ROTATE_OLDEST";
+
+  if (dom.autoStartTimeInput) {
+    const rawStart = item.start_time || item.created_at || new Date().toISOString();
+    const startDate = new Date(rawStart);
+    const localStart = new Date(startDate.getTime() - startDate.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+    dom.autoStartTimeInput.value = localStart;
+  }
 
   setModalPlatform(item.platform);
   populateModalAdAccounts(item.ad_account_id, item.campaign_id, item.adset_id, item.rule_id);
+  updateLiveAdNamePreview();
   dom.automationModal.showModal();
+  setTimeout(() => loadSourcePreviewPosts(), 300);
 }
 
 function populateModalSources(platform, selectedId = "") {
@@ -710,7 +807,9 @@ async function saveAutomationFromModal() {
     check_interval_hours: Number(dom.autoIntervalSelect.value) || 12,
     ad_status: dom.autoAdStatusSelect.value || "PAUSED",
     ad_name_pattern: dom.autoNamingPattern.value || "ADV - {platform} - {post}",
-    filter_keywords: dom.autoFilterKeywords.value.trim()
+    filter_keywords: dom.autoFilterKeywords.value.trim(),
+    start_time: dom.autoStartTimeInput?.value ? new Date(dom.autoStartTimeInput.value).toISOString() : new Date().toISOString(),
+    adset_full_strategy: dom.autoAdsetStrategySelect?.value || "ROTATE_OLDEST"
   };
 
   try {

@@ -504,7 +504,35 @@
             </div>
           </div>
 
-          <!-- 4. Rule & Parameters -->
+          <!-- 4. Start Time Protection & AdSet 50-limit Strategy -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="autoStartTimeInput">Inizia a monitorare da (Data e Ora) <span class="required">*</span></label>
+              <input id="autoStartTimeInput" type="datetime-local" required>
+              <small class="help-text">🛡️ <strong>Zero retroattività:</strong> I post pubblicati prima di questa data verranno ignorati.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="autoAdsetStrategySelect">Se il Gruppo Inserzioni è pieno (limite 50 ads) <span class="required">*</span></label>
+              <select id="autoAdsetStrategySelect">
+                <option value="ROTATE_OLDEST" selected>🔄 Rotazione: Archivia la più vecchia (Consigliato)</option>
+                <option value="CREATE_NEW_ADSET">➕ Crea nuovo AdSet automatico</option>
+                <option value="STOP_AND_ALERT">⏸️ Blocca creazione e segnala avviso</option>
+              </select>
+              <small class="help-text">Supera in automatico il limite Meta di 50 ads per AdSet.</small>
+            </div>
+          </div>
+
+          <!-- Source Posts Preview Box -->
+          <div class="source-preview-container" id="sourcePreviewContainer" hidden>
+            <div class="source-preview-header">
+              <span>📦 Post già pubblicati sulla fonte (NON verranno sponsorizzati):</span>
+              <span class="sub-badge" id="sourcePreviewBadge">0 contenuti</span>
+            </div>
+            <div class="source-preview-cards" id="sourcePreviewCards"></div>
+          </div>
+
+          <!-- 5. Rule & Parameters -->
           <div class="form-row three-cols">
             <div class="form-group">
               <label for="autoRuleSelect">Regola Automatica Meta (Opzionale)</label>
@@ -532,7 +560,7 @@
             </div>
           </div>
 
-          <!-- 5. Naming Pattern -->
+          <!-- 6. Naming Pattern with Live Preview -->
           <div class="form-group">
             <label for="autoNamingPattern">Schema Nome Inserzione</label>
             <input id="autoNamingPattern" type="text" value="ADV - {platform} - {post}" autocomplete="off">
@@ -543,9 +571,14 @@
               <button class="pill" type="button" data-tag="{date}">{date}</button>
               <button class="pill" type="button" data-tag="{id}">{id}</button>
             </div>
+
+            <div class="live-preview-box" id="liveAdNamePreviewBox">
+              <span class="live-preview-label">Anteprima Nome Reale:</span>
+              <strong id="liveAdNamePreview">ADV - FB - Esempio titolo del post...</strong>
+            </div>
           </div>
 
-          <!-- 6. Filter Keywords -->
+          <!-- 7. Filter Keywords -->
           <div class="form-group">
             <label for="autoFilterKeywords">Filtro Parole Chiave / Hashtag (Opzionale)</label>
             <input id="autoFilterKeywords" type="text" placeholder="Es. #sponsor, #promo, offerta (lascia vuoto per tutti i post)" autocomplete="off">

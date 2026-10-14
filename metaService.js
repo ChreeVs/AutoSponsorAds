@@ -197,10 +197,79 @@ class MetaService {
   }
 
   async listAdAccounts() {
-    const payload = await this.graph("/me/adaccounts", {
-      fields: "id,account_id,name,account_status,currency,timezone_name"
+    const collected = [];
+    // 1. Personal / direct accounts
+    try {
+      const payload = await this.graph("/me/adaccounts", {
+        fields: "id,account_id,name,account_status,currency,timezone_name",
+        limit: "100"
+      });
+      if (Array.isArray(payload.data)) collected.push(...payload.data);
+    } catch (err) {
+      console.warn("[Meta] Impossibile leggere /me/adaccounts:", err.message);
+    }
+
+    // 2. Business Manager owned and client accounts
+    try {
+      const bizPayload = await this.graph("/me/businesses", { fields: "id,name", limit: "50" });
+      const businesses = bizPayload.data || [];
+      for (const biz of businesses) {
+        for (const edge of ["owned_ad_accounts", "client_ad_accounts"]) {
+          try {
+            const bizAccounts = await this.graph(`/${biz.id}/${edge}`, {
+              fields: "id,account_id,name,account_status,currency,timezone_name",
+              limit: "100"
+            });
+            if (Array.isArray(bizAccounts.data)) collected.push(...bizAccounts.data);
+          } catch {}
+        }
+      }
+    } catch (err) {
+      console.warn("[Meta] Impossibile leggere /me/businesses:", err.message);
+    }
+
+    return this.dedupeById(collected);
+  }
+
+  async getAdsetAds(adsetId) {
+    if (!adsetId) return [];
+    try {
+      const payload = await this.graph(`/${adsetId}/ads`, {
+        fields: "id,name,status,effective_status,created_time",
+        limit: "100"
+      });
+      return payload.data || [];
+    } catch (err) {
+      console.warn(`[Meta] Errore conteggio ads per adset ${adsetId}:`, err.message);
+      return [];
+    }
+  }
+
+  async archiveAd(adId) {
+    if (!adId) return;
+    return await this.graphPost(`/${adId}`, { status: "ARCHIVED" });
+  }
+
+  async cloneAdset(adAccountId, originalAdsetId, newName) {
+    const original = await this.graph(`/${originalAdsetId}`, {
+      fields: "name,campaign_id,daily_budget,lifetime_budget,optimization_goal,billing_event,targeting,bid_amount,destination_type"
     });
-    return payload.data || [];
+
+    const params = {
+      name: newName || `${original.name} - Batch ${Date.now().toString().slice(-4)}`,
+      campaign_id: original.campaign_id,
+      optimization_goal: original.optimization_goal,
+      billing_event: original.billing_event,
+      targeting: original.targeting,
+      status: "ACTIVE"
+    };
+
+    if (original.daily_budget) params.daily_budget = original.daily_budget;
+    if (original.lifetime_budget) params.lifetime_budget = original.lifetime_budget;
+    if (original.bid_amount) params.bid_amount = original.bid_amount;
+    if (original.destination_type) params.destination_type = original.destination_type;
+
+    return await this.graphPost(`/${adAccountId}/adsets`, params);
   }
 
   async listCampaigns(accountId) {

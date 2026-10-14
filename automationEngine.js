@@ -76,24 +76,26 @@ class AutomationEngine {
 
       report.postsFound = rawPosts.length;
 
-      // Filter: only posts created within last 7 days or after automation creation
-      const automationCreatedAt = automation.created_at ? new Date(automation.created_at).getTime() : 0;
-      const sevenDaysAgo = Date.now() - 7 * 24 * 3600 * 1000;
-      const minTimestamp = Math.max(automationCreatedAt, sevenDaysAgo);
+      // STRICT NON-RETROACTIVE FILTER:
+      // Only posts published strictly AFTER the automation's start_time / created_at date!
+      const rawStartTime = automation.start_time || automation.created_at;
+      const startTimeMs = rawStartTime ? new Date(rawStartTime).getTime() : Date.now();
 
       const createdAdIdsForRule = [];
+      let currentAdsetId = automation.adset_id;
 
       for (const post of rawPosts) {
-        // 1. Check if already processed
-        const alreadyDone = await db.isPostProcessed(post.id);
-        if (alreadyDone) {
+        // 1. Check publication date - STRICT! Post must be newer than start time!
+        const postTime = post.createdTime ? new Date(post.createdTime).getTime() : 0;
+        if (!postTime || postTime < startTimeMs) {
           report.skippedCount++;
+          // Post is older than the automation start time - NEVER sponsor retroactively!
           continue;
         }
 
-        // 2. Check publication date (avoid massive backfill on first run)
-        const postTime = post.createdTime ? new Date(post.createdTime).getTime() : 0;
-        if (postTime && postTime < minTimestamp && !force) {
+        // 2. Check if already processed
+        const alreadyDone = await db.isPostProcessed(post.id);
+        if (alreadyDone) {
           report.skippedCount++;
           continue;
         }
@@ -104,7 +106,42 @@ class AutomationEngine {
           continue;
         }
 
-        // 4. Eligible for sponsoring!
+        // 4. AdSet 50-Ads Capacity Check & Auto-Management
+        try {
+          const existingAds = await this.meta.getAdsetAds(currentAdsetId);
+          const activeOrPausedAds = existingAds.filter(a => a.status !== "ARCHIVED");
+
+          if (activeOrPausedAds.length >= 49) {
+            const strategy = automation.adset_full_strategy || "ROTATE_OLDEST";
+            console.log(`[ENGINE] Gruppo inserzioni ${currentAdsetId} ha ${activeOrPausedAds.length}/50 inserzioni. Applico strategia: ${strategy}`);
+
+            if (strategy === "ROTATE_OLDEST") {
+              const sorted = [...activeOrPausedAds].sort((a, b) => new Date(a.created_time || 0) - new Date(b.created_time || 0));
+              const oldest = sorted[0];
+              if (oldest) {
+                await this.meta.archiveAd(oldest.id);
+                console.log(`[ENGINE] Archiviata inserzione più vecchia: ${oldest.name} (${oldest.id}) per liberare slot.`);
+              }
+            } else if (strategy === "CREATE_NEW_ADSET") {
+              const newAdset = await this.meta.cloneAdset(automation.ad_account_id, currentAdsetId);
+              currentAdsetId = newAdset.id;
+              automation.adset_id = newAdset.id;
+              await db.saveAutomation(automation);
+              console.log(`[ENGINE] Creato nuovo AdSet automatico ${newAdset.id} per proseguire l'automazione.`);
+            } else if (strategy === "STOP_AND_ALERT") {
+              report.errorsCount++;
+              report.errors.push({
+                postId: post.id,
+                error: `Gruppo inserzioni ${currentAdsetId} pieno (50/50 inserzioni raggiunte). Automazione in attesa.`
+              });
+              continue;
+            }
+          }
+        } catch (capErr) {
+          console.warn("[ENGINE] Errore verifica capacità AdSet:", capErr.message);
+        }
+
+        // 5. Eligible for sponsoring!
         const adName = this.formatAdName(automation.ad_name_pattern, {
           platform: automation.platform,
           postText: post.message,
@@ -130,10 +167,10 @@ class AutomationEngine {
 
           const creative = await this.meta.graphPost(`/${automation.ad_account_id}/adcreatives`, creativeParams);
 
-          // Create Ad
+          // Create Ad in currentAdsetId
           const ad = await this.meta.graphPost(`/${automation.ad_account_id}/ads`, {
             name: adName,
-            adset_id: automation.adset_id,
+            adset_id: currentAdsetId,
             creative: { creative_id: creative.id },
             status: automation.ad_status || "PAUSED"
           });
