@@ -187,6 +187,29 @@ async function handleApi(req, res, url) {
         return json(res, 200, { ok: true, data: item });
       }
 
+      if (subAction === "/duplicate" && req.method === "POST") {
+        const existing = await db.getAutomation(autoId);
+        if (!existing) return json(res, 404, { error: "Automazione non trovata" });
+
+        const now = new Date().toISOString();
+        const clone = {
+          ...existing,
+          id: `auto_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+          name: `${existing.name} (Copia)`,
+          enabled: false,
+          start_time: now,
+          ad_status: existing.ad_status || "PAUSED",
+          adset_full_strategy: existing.adset_full_strategy || "ROTATE_OLDEST",
+          created_at: now,
+          last_checked_at: null,
+          last_run_status: "IDLE",
+          last_run_message: ""
+        };
+
+        const saved = await db.saveAutomation(clone);
+        return json(res, 201, { ok: true, data: saved });
+      }
+
       if (subAction === "/run" && req.method === "POST") {
         const report = await engine.runSingleAutomation(autoId, "MANUAL", true);
         return json(res, 200, { ok: true, report });

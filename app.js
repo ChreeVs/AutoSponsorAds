@@ -134,6 +134,7 @@ const dom = {
   sourcePreviewContainer: document.getElementById("sourcePreviewContainer"),
   sourcePreviewCards: document.getElementById("sourcePreviewCards"),
   sourcePreviewBadge: document.getElementById("sourcePreviewBadge"),
+  duplicateFromModalBtn: document.getElementById("duplicateFromModalBtn"),
 
   // Logs & Tables
   refreshLogsBtn: document.getElementById("refreshLogsBtn"),
@@ -344,6 +345,7 @@ function renderAutomationsGrid() {
           <button class="btn btn-secondary btn-sm run-single-btn" data-id="${item.id}" title="Avvia controllo adesso">
             ▶ Esegui Ora
           </button>
+          <button class="icon-button duplicate-auto-btn" data-id="${item.id}" title="Duplica automazione">📋</button>
           <button class="icon-button edit-auto-btn" data-id="${item.id}" title="Modifica">✏️</button>
           <button class="icon-button delete-auto-btn" data-id="${item.id}" title="Elimina">🗑️</button>
         </div>
@@ -408,6 +410,25 @@ function renderAutomationsGrid() {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-id");
       openEditModal(id);
+    });
+  });
+
+  grid.querySelectorAll(".duplicate-auto-btn").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const id = btn.getAttribute("data-id");
+      btn.disabled = true;
+      try {
+        const res = await api(`/api/automations/${id}/duplicate`, { method: "POST" });
+        showBanner(`Automazione "${res.data?.name || 'Copia'}" duplicata con successo!`, "info");
+        await loadAutomations();
+        if (res.data?.id) {
+          openEditModal(res.data.id);
+        }
+      } catch (err) {
+        showBanner(`Errore duplicazione: ${err.message}`, "danger");
+      } finally {
+        btn.disabled = false;
+      }
     });
   });
 }
@@ -549,6 +570,21 @@ function setupModal() {
   dom.closeModalBtn.addEventListener("click", () => dom.automationModal.close());
   dom.cancelModalBtn.addEventListener("click", () => dom.automationModal.close());
 
+  dom.duplicateFromModalBtn?.addEventListener("click", async () => {
+    if (!state.editingAutoId) return;
+    try {
+      const res = await api(`/api/automations/${state.editingAutoId}/duplicate`, { method: "POST" });
+      dom.automationModal.close();
+      showBanner(`Automazione duplicata con successo come "${res.data?.name}"!`, "info");
+      await loadAutomations();
+      if (res.data?.id) {
+        openEditModal(res.data.id);
+      }
+    } catch (err) {
+      showBanner(`Errore duplicazione: ${err.message}`, "danger");
+    }
+  });
+
   // Platform Toggle inside Modal
   dom.btnPlatformFB.addEventListener("click", () => {
     setModalPlatform("Facebook");
@@ -625,6 +661,7 @@ function openNewModal() {
   }
 
   if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = true;
+  if (dom.duplicateFromModalBtn) dom.duplicateFromModalBtn.style.display = "none";
 
   setModalPlatform("Facebook");
   populateModalAdAccounts();
@@ -654,6 +691,7 @@ function openEditModal(id) {
   }
 
   setModalPlatform(item.platform);
+  if (dom.duplicateFromModalBtn) dom.duplicateFromModalBtn.style.display = "inline-flex";
   populateModalAdAccounts(item.ad_account_id, item.campaign_id, item.adset_id, item.rule_id);
   updateLiveAdNamePreview();
   dom.automationModal.showModal();
