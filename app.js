@@ -351,6 +351,12 @@ function renderAutomationsGrid() {
             🛡️ ${item.start_time ? new Date(item.start_time).toLocaleDateString('it-IT') : 'Creazione'}
           </strong>
         </div>
+        <div class="auto-detail-item">
+          <span>Limite 50 Ads</span>
+          <strong title="Strategia gestione limite 50 inserzioni per AdSet">
+            ${item.adset_full_strategy === 'CREATE_NEW_ADSET' ? '➕ Nuovo AdSet' : item.adset_full_strategy === 'STOP_AND_ALERT' ? '⏸️ Stop & Avviso' : '🔄 Rotazione'}
+          </strong>
+        </div>
       </div>
 
       <div class="auto-status-footer">
