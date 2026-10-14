@@ -7,8 +7,40 @@ let dbType = "none";
 
 const ROOT = __dirname;
 const DATA_DIR = path.join(ROOT, "data");
+const JSON_STORE_PATH = path.join(DATA_DIR, "autosponsor_store.json");
+
+let jsonState = {
+  automations: [],
+  processed_posts: [],
+  execution_logs: [],
+  app_settings: {}
+};
+
+function loadJsonStore() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    if (fs.existsSync(JSON_STORE_PATH)) {
+      const raw = fs.readFileSync(JSON_STORE_PATH, "utf8");
+      jsonState = { ...jsonState, ...JSON.parse(raw) };
+    } else {
+      saveJsonStore();
+    }
+  } catch (err) {
+    console.warn("[DB] Errore caricamento store JSON:", err.message);
+  }
+}
+
+function saveJsonStore() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(JSON_STORE_PATH, JSON.stringify(jsonState, null, 2), "utf8");
+  } catch (err) {
+    console.error("[DB] Errore salvataggio store JSON:", err.message);
+  }
+}
 
 async function initDb(databaseUrl) {
+  // 1. Try PostgreSQL cloud (Neon / Supabase / Render Postgres)
   if (databaseUrl && (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://"))) {
     try {
       const { Pool } = require("pg");
@@ -16,23 +48,20 @@ async function initDb(databaseUrl) {
         connectionString: databaseUrl,
         ssl: databaseUrl.includes("localhost") ? false : { rejectUnauthorized: false }
       });
-      // Test connection
       await pgPool.query("SELECT 1");
       dbType = "postgres";
       console.log("[DB] Connesso con successo a PostgreSQL cloud");
       await setupPostgresSchema();
       return;
     } catch (err) {
-      console.error("[DB] Errore connessione PostgreSQL, fallback a SQLite locale:", err.message);
+      console.error("[DB] Connessione PostgreSQL fallita, provo storage locale:", err.message);
       pgPool = null;
     }
   }
 
-  // Fallback to SQLite (built-in node:sqlite in Node 22+)
+  // 2. Try native node:sqlite (Node 22+)
   try {
-    if (!fs.existsSync(DATA_DIR)) {
-      fs.mkdirSync(DATA_DIR, { recursive: true });
-    }
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     const { DatabaseSync } = require("node:sqlite");
     const dbPath = path.join(DATA_DIR, "autosponsor.db");
     sqliteDb = new DatabaseSync(dbPath);
@@ -40,10 +69,15 @@ async function initDb(databaseUrl) {
     dbType = "sqlite";
     console.log(`[DB] Connesso a SQLite locale (${dbPath})`);
     setupSqliteSchema();
+    return;
   } catch (err) {
-    console.error("[DB] Impossibile inizializzare SQLite:", err.message);
-    throw err;
+    console.log(`[DB] node:sqlite non disponibile in questo ambiente (${err.message}). Attivazione JSON Storage universale.`);
   }
+
+  // 3. Universal JSON file storage (works on ALL Node versions: 18, 20, 22, 24)
+  dbType = "json";
+  loadJsonStore();
+  console.log(`[DB] Connesso a JSON Storage locale (${JSON_STORE_PATH})`);
 }
 
 async function setupPostgresSchema() {
@@ -173,24 +207,20 @@ function setupSqliteSchema() {
   `);
 }
 
-// ----------------------------------------------------
-// Public Unified API
-// ----------------------------------------------------
+// -----------------------------------------------------------------------------
+// Unified CRUD API
+// -----------------------------------------------------------------------------
 
 async function getAutomations() {
   if (dbType === "postgres") {
     const res = await pgPool.query("SELECT * FROM automations ORDER BY created_at DESC");
-    return res.rows.map(row => ({
-      ...row,
-      enabled: Boolean(row.enabled)
-    }));
+    return res.rows.map(row => ({ ...row, enabled: Boolean(row.enabled) }));
   }
-  const stmt = sqliteDb.prepare("SELECT * FROM automations ORDER BY created_at DESC");
-  const rows = stmt.all();
-  return rows.map(row => ({
-    ...row,
-    enabled: Boolean(row.enabled)
-  }));
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT * FROM automations ORDER BY created_at DESC");
+    return stmt.all().map(row => ({ ...row, enabled: Boolean(row.enabled) }));
+  }
+  return [...jsonState.automations].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 }
 
 async function getAutomation(id) {
@@ -199,14 +229,25 @@ async function getAutomation(id) {
     if (!res.rows.length) return null;
     return { ...res.rows[0], enabled: Boolean(res.rows[0].enabled) };
   }
-  const stmt = sqliteDb.prepare("SELECT * FROM automations WHERE id = ?");
-  const row = stmt.get(id);
-  if (!row) return null;
-  return { ...row, enabled: Boolean(row.enabled) };
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT * FROM automations WHERE id = ?");
+    const row = stmt.get(id);
+    if (!row) return null;
+    return { ...row, enabled: Boolean(row.enabled) };
+  }
+  return jsonState.automations.find(a => a.id === id) || null;
 }
 
 async function saveAutomation(item) {
   const now = new Date().toISOString();
+  const normalized = {
+    ...item,
+    enabled: item.enabled ?? true,
+    created_at: item.created_at || now,
+    last_run_status: item.last_run_status || "IDLE",
+    last_run_message: item.last_run_message || ""
+  };
+
   if (dbType === "postgres") {
     await pgPool.query(`
       INSERT INTO automations (
@@ -234,55 +275,67 @@ async function saveAutomation(item) {
         check_interval_hours = EXCLUDED.check_interval_hours,
         filter_keywords = EXCLUDED.filter_keywords
     `, [
-      item.id, item.name, item.enabled ?? true, item.platform, item.source_id,
-      item.source_name || "", item.page_id || "", item.ad_account_id,
-      item.campaign_id, item.campaign_name || "", item.adset_id, item.adset_name || "",
-      item.rule_id || "", item.rule_name || "", item.ad_name_pattern || "ADV - {platform} - {post}",
-      item.ad_status || "PAUSED", item.check_interval_hours || 12, item.filter_keywords || "",
-      item.created_at || now, item.last_checked_at || null,
-      item.last_run_status || "IDLE", item.last_run_message || ""
+      normalized.id, normalized.name, normalized.enabled, normalized.platform, normalized.source_id,
+      normalized.source_name || "", normalized.page_id || "", normalized.ad_account_id,
+      normalized.campaign_id, normalized.campaign_name || "", normalized.adset_id, normalized.adset_name || "",
+      normalized.rule_id || "", normalized.rule_name || "", normalized.ad_name_pattern || "ADV - {platform} - {post}",
+      normalized.ad_status || "PAUSED", normalized.check_interval_hours || 12, normalized.filter_keywords || "",
+      normalized.created_at, normalized.last_checked_at || null,
+      normalized.last_run_status, normalized.last_run_message
     ]);
-    return getAutomation(item.id);
+    return getAutomation(normalized.id);
   }
 
-  const stmt = sqliteDb.prepare(`
-    INSERT INTO automations (
-      id, name, enabled, platform, source_id, source_name, page_id,
-      ad_account_id, campaign_id, campaign_name, adset_id, adset_name,
-      rule_id, rule_name, ad_name_pattern, ad_status, check_interval_hours,
-      filter_keywords, created_at, last_checked_at, last_run_status, last_run_message
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (id) DO UPDATE SET
-      name = excluded.name,
-      enabled = excluded.enabled,
-      platform = excluded.platform,
-      source_id = excluded.source_id,
-      source_name = excluded.source_name,
-      page_id = excluded.page_id,
-      ad_account_id = excluded.ad_account_id,
-      campaign_id = excluded.campaign_id,
-      campaign_name = excluded.campaign_name,
-      adset_id = excluded.adset_id,
-      adset_name = excluded.adset_name,
-      rule_id = excluded.rule_id,
-      rule_name = excluded.rule_name,
-      ad_name_pattern = excluded.ad_name_pattern,
-      ad_status = excluded.ad_status,
-      check_interval_hours = excluded.check_interval_hours,
-      filter_keywords = excluded.filter_keywords
-  `);
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare(`
+      INSERT INTO automations (
+        id, name, enabled, platform, source_id, source_name, page_id,
+        ad_account_id, campaign_id, campaign_name, adset_id, adset_name,
+        rule_id, rule_name, ad_name_pattern, ad_status, check_interval_hours,
+        filter_keywords, created_at, last_checked_at, last_run_status, last_run_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET
+        name = excluded.name,
+        enabled = excluded.enabled,
+        platform = excluded.platform,
+        source_id = excluded.source_id,
+        source_name = excluded.source_name,
+        page_id = excluded.page_id,
+        ad_account_id = excluded.ad_account_id,
+        campaign_id = excluded.campaign_id,
+        campaign_name = excluded.campaign_name,
+        adset_id = excluded.adset_id,
+        adset_name = excluded.adset_name,
+        rule_id = excluded.rule_id,
+        rule_name = excluded.rule_name,
+        ad_name_pattern = excluded.ad_name_pattern,
+        ad_status = excluded.ad_status,
+        check_interval_hours = excluded.check_interval_hours,
+        filter_keywords = excluded.filter_keywords
+    `);
 
-  stmt.run(
-    item.id, item.name, item.enabled ? 1 : 0, item.platform, item.source_id,
-    item.source_name || "", item.page_id || "", item.ad_account_id,
-    item.campaign_id, item.campaign_name || "", item.adset_id, item.adset_name || "",
-    item.rule_id || "", item.rule_name || "", item.ad_name_pattern || "ADV - {platform} - {post}",
-    item.ad_status || "PAUSED", item.check_interval_hours || 12, item.filter_keywords || "",
-    item.created_at || now, item.last_checked_at || null,
-    item.last_run_status || "IDLE", item.last_run_message || ""
-  );
+    stmt.run(
+      normalized.id, normalized.name, normalized.enabled ? 1 : 0, normalized.platform, normalized.source_id,
+      normalized.source_name || "", normalized.page_id || "", normalized.ad_account_id,
+      normalized.campaign_id, normalized.campaign_name || "", normalized.adset_id, normalized.adset_name || "",
+      normalized.rule_id || "", normalized.rule_name || "", normalized.ad_name_pattern || "ADV - {platform} - {post}",
+      normalized.ad_status || "PAUSED", normalized.check_interval_hours || 12, normalized.filter_keywords || "",
+      normalized.created_at, normalized.last_checked_at || null,
+      normalized.last_run_status, normalized.last_run_message
+    );
 
-  return getAutomation(item.id);
+    return getAutomation(normalized.id);
+  }
+
+  // JSON store
+  const existingIdx = jsonState.automations.findIndex(a => a.id === normalized.id);
+  if (existingIdx >= 0) {
+    jsonState.automations[existingIdx] = { ...jsonState.automations[existingIdx], ...normalized };
+  } else {
+    jsonState.automations.push(normalized);
+  }
+  saveJsonStore();
+  return normalized;
 }
 
 async function deleteAutomation(id) {
@@ -290,8 +343,13 @@ async function deleteAutomation(id) {
     await pgPool.query("DELETE FROM automations WHERE id = $1", [id]);
     return true;
   }
-  const stmt = sqliteDb.prepare("DELETE FROM automations WHERE id = ?");
-  stmt.run(id);
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("DELETE FROM automations WHERE id = ?");
+    stmt.run(id);
+    return true;
+  }
+  jsonState.automations = jsonState.automations.filter(a => a.id !== id);
+  saveJsonStore();
   return true;
 }
 
@@ -300,9 +358,17 @@ async function toggleAutomation(id, enabled) {
     await pgPool.query("UPDATE automations SET enabled = $1 WHERE id = $2", [enabled, id]);
     return getAutomation(id);
   }
-  const stmt = sqliteDb.prepare("UPDATE automations SET enabled = ? WHERE id = ?");
-  stmt.run(enabled ? 1 : 0, id);
-  return getAutomation(id);
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("UPDATE automations SET enabled = ? WHERE id = ?");
+    stmt.run(enabled ? 1 : 0, id);
+    return getAutomation(id);
+  }
+  const item = jsonState.automations.find(a => a.id === id);
+  if (item) {
+    item.enabled = Boolean(enabled);
+    saveJsonStore();
+  }
+  return item;
 }
 
 async function updateAutomationCheckResult(id, status, message) {
@@ -314,10 +380,20 @@ async function updateAutomationCheckResult(id, status, message) {
     );
     return;
   }
-  const stmt = sqliteDb.prepare(
-    "UPDATE automations SET last_checked_at = ?, last_run_status = ?, last_run_message = ? WHERE id = ?"
-  );
-  stmt.run(now, status, message, id);
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare(
+      "UPDATE automations SET last_checked_at = ?, last_run_status = ?, last_run_message = ? WHERE id = ?"
+    );
+    stmt.run(now, status, message, id);
+    return;
+  }
+  const item = jsonState.automations.find(a => a.id === id);
+  if (item) {
+    item.last_checked_at = now;
+    item.last_run_status = status;
+    item.last_run_message = message;
+    saveJsonStore();
+  }
 }
 
 async function isPostProcessed(postId) {
@@ -325,8 +401,11 @@ async function isPostProcessed(postId) {
     const res = await pgPool.query("SELECT 1 FROM processed_posts WHERE post_id = $1", [postId]);
     return res.rows.length > 0;
   }
-  const stmt = sqliteDb.prepare("SELECT 1 FROM processed_posts WHERE post_id = ?");
-  return Boolean(stmt.get(postId));
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT 1 FROM processed_posts WHERE post_id = ?");
+    return Boolean(stmt.get(postId));
+  }
+  return jsonState.processed_posts.some(p => p.post_id === postId);
 }
 
 async function recordProcessedPost(data) {
@@ -346,19 +425,26 @@ async function recordProcessedPost(data) {
     ]);
     return;
   }
-  const stmt = sqliteDb.prepare(`
-    INSERT INTO processed_posts (
-      automation_id, platform, source_id, post_id, post_permalink,
-      post_message, ad_id, creative_id, ad_name, rule_applied, status, error_message, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT (post_id) DO NOTHING
-  `);
-  stmt.run(
-    data.automation_id, data.platform, data.source_id, data.post_id,
-    data.post_permalink || "", data.post_message || "", data.ad_id || "",
-    data.creative_id || "", data.ad_name || "", data.rule_applied ? 1 : 0,
-    data.status || "SUCCESS", data.error_message || "", now
-  );
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare(`
+      INSERT INTO processed_posts (
+        automation_id, platform, source_id, post_id, post_permalink,
+        post_message, ad_id, creative_id, ad_name, rule_applied, status, error_message, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (post_id) DO NOTHING
+    `);
+    stmt.run(
+      data.automation_id, data.platform, data.source_id, data.post_id,
+      data.post_permalink || "", data.post_message || "", data.ad_id || "",
+      data.creative_id || "", data.ad_name || "", data.rule_applied ? 1 : 0,
+      data.status || "SUCCESS", data.error_message || "", now
+    );
+    return;
+  }
+  if (!jsonState.processed_posts.some(p => p.post_id === data.post_id)) {
+    jsonState.processed_posts.push({ ...data, created_at: now });
+    saveJsonStore();
+  }
 }
 
 async function getProcessedPosts(limit = 100) {
@@ -366,8 +452,11 @@ async function getProcessedPosts(limit = 100) {
     const res = await pgPool.query("SELECT * FROM processed_posts ORDER BY created_at DESC LIMIT $1", [limit]);
     return res.rows;
   }
-  const stmt = sqliteDb.prepare("SELECT * FROM processed_posts ORDER BY created_at DESC LIMIT ?");
-  return stmt.all(limit);
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT * FROM processed_posts ORDER BY created_at DESC LIMIT ?");
+    return stmt.all(limit);
+  }
+  return [...jsonState.processed_posts].sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).slice(0, limit);
 }
 
 async function recordLog(data) {
@@ -384,15 +473,21 @@ async function recordLog(data) {
     ]);
     return;
   }
-  const stmt = sqliteDb.prepare(`
-    INSERT INTO execution_logs (
-      automation_id, automation_name, trigger_type, posts_found, ads_created, errors_count, details, executed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `);
-  stmt.run(
-    data.automation_id || "", data.automation_name || "", data.trigger_type || "CRON",
-    data.posts_found || 0, data.ads_created || 0, data.errors_count || 0, details, now
-  );
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare(`
+      INSERT INTO execution_logs (
+        automation_id, automation_name, trigger_type, posts_found, ads_created, errors_count, details, executed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      data.automation_id || "", data.automation_name || "", data.trigger_type || "CRON",
+      data.posts_found || 0, data.ads_created || 0, data.errors_count || 0, details, now
+    );
+    return;
+  }
+  jsonState.execution_logs.push({ ...data, details, executed_at: now });
+  if (jsonState.execution_logs.length > 200) jsonState.execution_logs = jsonState.execution_logs.slice(-200);
+  saveJsonStore();
 }
 
 async function getLogs(limit = 100) {
@@ -400,8 +495,11 @@ async function getLogs(limit = 100) {
     const res = await pgPool.query("SELECT * FROM execution_logs ORDER BY executed_at DESC LIMIT $1", [limit]);
     return res.rows;
   }
-  const stmt = sqliteDb.prepare("SELECT * FROM execution_logs ORDER BY executed_at DESC LIMIT ?");
-  return stmt.all(limit);
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT * FROM execution_logs ORDER BY executed_at DESC LIMIT ?");
+    return stmt.all(limit);
+  }
+  return [...jsonState.execution_logs].sort((a, b) => new Date(b.executed_at) - new Date(a.executed_at)).slice(0, limit);
 }
 
 async function getSetting(key) {
@@ -409,9 +507,12 @@ async function getSetting(key) {
     const res = await pgPool.query("SELECT value FROM app_settings WHERE key = $1", [key]);
     return res.rows[0]?.value || null;
   }
-  const stmt = sqliteDb.prepare("SELECT value FROM app_settings WHERE key = ?");
-  const row = stmt.get(key);
-  return row?.value || null;
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT value FROM app_settings WHERE key = ?");
+    const row = stmt.get(key);
+    return row?.value || null;
+  }
+  return jsonState.app_settings[key] || null;
 }
 
 async function setSetting(key, value) {
@@ -422,11 +523,16 @@ async function setSetting(key, value) {
     `, [key, value]);
     return;
   }
-  const stmt = sqliteDb.prepare(`
-    INSERT INTO app_settings (key, value) VALUES (?, ?)
-    ON CONFLICT (key) DO UPDATE SET value = excluded.value
-  `);
-  stmt.run(key, value);
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare(`
+      INSERT INTO app_settings (key, value) VALUES (?, ?)
+      ON CONFLICT (key) DO UPDATE SET value = excluded.value
+    `);
+    stmt.run(key, value);
+    return;
+  }
+  jsonState.app_settings[key] = value;
+  saveJsonStore();
 }
 
 function getDbType() {
@@ -450,4 +556,3 @@ module.exports = {
   getSetting,
   setSetting
 };
-
