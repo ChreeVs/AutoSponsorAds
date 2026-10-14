@@ -1115,6 +1115,13 @@ textarea:focus {
   box-shadow: var(--shadow-md);
   max-width: 680px;
   width: 90vw;
+  position: fixed;
+  inset: 0;
+  margin: auto;
+}
+
+#manageAccountsDialog {
+  z-index: 1200;
 }
 
 .app-dialog::backdrop {

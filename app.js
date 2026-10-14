@@ -148,6 +148,7 @@ const dom = {
   showHiddenManualAccountsToggle: document.getElementById("showHiddenManualAccountsToggle"),
   hiddenAccountsCountManual: document.getElementById("hiddenAccountsCountManual"),
   manageAccountsDialog: document.getElementById("manageAccountsDialog"),
+  closeManageAccountsBtn: document.getElementById("closeManageAccountsBtn"),
   manageAccountsSearch: document.getElementById("manageAccountsSearch"),
   manageAccountsList: document.getElementById("manageAccountsList"),
   restoreAllAccountsBtn: document.getElementById("restoreAllAccountsBtn"),
@@ -1673,6 +1674,7 @@ async function saveManagedAccounts() {
 function setupAccountManagement() {
   dom.manageManualAccountsBtn?.addEventListener("click", () => openManageAccountsDialog());
   dom.manageModalAccountsBtn?.addEventListener("click", () => openManageAccountsDialog());
+  dom.closeManageAccountsBtn?.addEventListener("click", () => dom.manageAccountsDialog.close());
 
   dom.manageAccountsSearch?.addEventListener("input", (e) => {
     renderManageAccountsList(e.target.value);
