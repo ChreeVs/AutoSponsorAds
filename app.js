@@ -14,11 +14,19 @@ const state = {
   logs: [],
   processedPosts: [],
 
-  // Modal Editing
+  // Modal Editing & Independent Automations State
   editingAutoId: null,
   modalSelectedPlatform: "Facebook",
+  allAdAccounts: [],
+  hiddenAccountIds: new Set(),
+  showHiddenInManual: false,
+  modalSources: {
+    facebookPages: [],
+    instagramAccounts: []
+  },
+  modalSelectedAccountId: "",
 
-  // Manual Bulk Sponsor State (Preserved)
+  // Manual Bulk Sponsor State (Preserved & Independent)
   manual: {
     target: {
       adAccountId: "",
@@ -135,6 +143,15 @@ const dom = {
   sourcePreviewCards: document.getElementById("sourcePreviewCards"),
   sourcePreviewBadge: document.getElementById("sourcePreviewBadge"),
   duplicateFromModalBtn: document.getElementById("duplicateFromModalBtn"),
+  manageModalAccountsBtn: document.getElementById("manageModalAccountsBtn"),
+  manageManualAccountsBtn: document.getElementById("manageManualAccountsBtn"),
+  showHiddenManualAccountsToggle: document.getElementById("showHiddenManualAccountsToggle"),
+  hiddenAccountsCountManual: document.getElementById("hiddenAccountsCountManual"),
+  manageAccountsDialog: document.getElementById("manageAccountsDialog"),
+  manageAccountsSearch: document.getElementById("manageAccountsSearch"),
+  manageAccountsList: document.getElementById("manageAccountsList"),
+  restoreAllAccountsBtn: document.getElementById("restoreAllAccountsBtn"),
+  saveManagedAccountsBtn: document.getElementById("saveManagedAccountsBtn"),
 
   // Logs & Tables
   refreshLogsBtn: document.getElementById("refreshLogsBtn"),
@@ -599,9 +616,13 @@ function setupModal() {
     loadSourcePreviewPosts();
   });
 
-  // Dynamic cascades inside Modal
+  // Dynamic cascades inside Modal - INDEPENDENT FROM MANUAL SPONSOR!
   dom.autoAdAccountSelect.addEventListener("change", async () => {
     const accountId = dom.autoAdAccountSelect.value;
+    state.modalSelectedAccountId = accountId;
+    if (!accountId) return;
+    await loadModalSourcesForAccount(accountId);
+    populateModalSources(state.modalSelectedPlatform);
     await populateModalCampaigns(accountId);
     await populateModalRules(accountId);
   });
@@ -642,7 +663,7 @@ function setModalPlatform(platform) {
   updateLiveAdNamePreview();
 }
 
-function openNewModal() {
+async function openNewModal() {
   state.editingAutoId = null;
   dom.modalTitle.textContent = "Nuova Regola di Automazione";
   dom.autoFormId.value = "";
@@ -663,13 +684,16 @@ function openNewModal() {
   if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = true;
   if (dom.duplicateFromModalBtn) dom.duplicateFromModalBtn.style.display = "none";
 
-  setModalPlatform("Facebook");
-  populateModalAdAccounts();
+  state.modalSelectedPlatform = "Facebook";
+  dom.btnPlatformFB.classList.add("active");
+  dom.btnPlatformIG.classList.remove("active");
+
+  await populateModalAdAccounts();
   updateLiveAdNamePreview();
   dom.automationModal.showModal();
 }
 
-function openEditModal(id) {
+async function openEditModal(id) {
   const item = state.automations.find(a => a.id === id);
   if (!item) return;
 
@@ -690,21 +714,46 @@ function openEditModal(id) {
     dom.autoStartTimeInput.value = localStart;
   }
 
-  setModalPlatform(item.platform);
+  state.modalSelectedPlatform = item.platform;
+  dom.btnPlatformFB.classList.toggle("active", item.platform === "Facebook");
+  dom.btnPlatformIG.classList.toggle("active", item.platform === "Instagram");
+
   if (dom.duplicateFromModalBtn) dom.duplicateFromModalBtn.style.display = "inline-flex";
-  populateModalAdAccounts(item.ad_account_id, item.campaign_id, item.adset_id, item.rule_id);
+  await populateModalAdAccounts(item.ad_account_id, item.campaign_id, item.adset_id, item.rule_id);
+  if (item.source_id && dom.autoSourceSelect) {
+    dom.autoSourceSelect.value = item.source_id;
+  }
+
   updateLiveAdNamePreview();
   dom.automationModal.showModal();
   setTimeout(() => loadSourcePreviewPosts(), 300);
+}
+
+async function loadModalSourcesForAccount(accountId) {
+  if (!accountId) {
+    state.modalSources = { facebookPages: [], instagramAccounts: [] };
+    return;
+  }
+  try {
+    const payload = await api(`/api/meta/sources?accountId=${encodeURIComponent(accountId)}`);
+    state.modalSources = {
+      facebookPages: payload.facebookPages || [],
+      instagramAccounts: payload.instagramAccounts || []
+    };
+  } catch (err) {
+    console.warn("Impossibile caricare fonti per account modal:", err);
+    state.modalSources = { facebookPages: [], instagramAccounts: [] };
+  }
 }
 
 function populateModalSources(platform, selectedId = "") {
   const select = dom.autoSourceSelect;
   select.innerHTML = "";
 
-  const sources = platform === "Facebook" ? state.manual.facebookPages : state.manual.instagramAccounts;
+  const sources = platform === "Facebook" ? state.modalSources.facebookPages : state.modalSources.instagramAccounts;
   if (!sources || !sources.length) {
-    select.innerHTML = `<option value="">Nessuna fonte ${platform} trovata</option>`;
+    select.innerHTML = `<option value="">Nessuna fonte ${platform} trovata per questo account</option>`;
+    if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = true;
     return;
   }
 
@@ -716,28 +765,35 @@ function populateModalSources(platform, selectedId = "") {
     if (selectedId && s.id === selectedId) opt.selected = true;
     select.appendChild(opt);
   });
+
+  loadSourcePreviewPosts();
 }
 
 async function populateModalAdAccounts(targetAccountId = "", targetCampaignId = "", targetAdsetId = "", targetRuleId = "") {
   const select = dom.autoAdAccountSelect;
   select.innerHTML = "";
 
-  const accounts = state.manual.adAccounts || [];
-  if (!accounts.length) {
-    select.innerHTML = `<option value="">Nessun account pubblicitario disponibile</option>`;
+  // Show only active/non-hidden accounts, UNLESS the targetAccountId is hidden (preserve existing rule)
+  const visibleAccounts = (state.allAdAccounts || []).filter(acc => !state.hiddenAccountIds.has(acc.id) || acc.id === targetAccountId);
+
+  if (!visibleAccounts.length) {
+    select.innerHTML = `<option value="">Nessun account pubblicitario disponibile (o tutti archiviati)</option>`;
     return;
   }
 
-  accounts.forEach(acc => {
+  visibleAccounts.forEach(acc => {
     const opt = document.createElement("option");
     opt.value = acc.id;
-    opt.textContent = `${acc.name} (${acc.id})`;
+    opt.textContent = `${acc.name} (${acc.id})` + (state.hiddenAccountIds.has(acc.id) ? " [Archiviato]" : "");
     if (targetAccountId ? acc.id === targetAccountId : false) opt.selected = true;
     select.appendChild(opt);
   });
 
-  const selectedAccountId = select.value || accounts[0]?.id;
+  const selectedAccountId = select.value || visibleAccounts[0]?.id;
+  state.modalSelectedAccountId = selectedAccountId;
   if (selectedAccountId) {
+    await loadModalSourcesForAccount(selectedAccountId);
+    populateModalSources(state.modalSelectedPlatform);
     await populateModalCampaigns(selectedAccountId, targetCampaignId);
     await populateModalRules(selectedAccountId, targetRuleId);
     if (targetCampaignId) {
@@ -1098,14 +1154,26 @@ function formatAdName(pattern, { platform, post, fallback }) {
 async function loadManualConfig() {
   try {
     const config = await api("/api/meta/config");
-    state.manual.adAccounts = config.adAccounts || [];
+    state.allAdAccounts = config.adAccounts || [];
+
+    // Load hidden accounts from server & local storage
+    const serverHidden = config.hiddenAccounts || [];
+    let localHidden = [];
+    try { localHidden = JSON.parse(localStorage.getItem("autosponsor_hidden_accounts") || "[]"); } catch {}
+    state.hiddenAccountIds = new Set([...serverHidden, ...localHidden]);
+
+    updateHiddenAccountsCount();
+
+    // Populate manual accounts from allAdAccounts
+    state.manual.adAccounts = state.allAdAccounts;
     state.manual.facebookPages = config.facebookPages || [];
     state.manual.instagramAccounts = config.instagramAccounts || [];
     state.manual.sourcesMode = "configured";
     state.manual.sourcesNote = "Fonti configurate nel sistema.";
 
-    if (!state.manual.target.adAccountId && state.manual.adAccounts.length) {
-      state.manual.target.adAccountId = state.manual.adAccounts[0].id;
+    const visibleAccounts = state.allAdAccounts.filter(a => !state.hiddenAccountIds.has(a.id));
+    if (!state.manual.target.adAccountId && visibleAccounts.length) {
+      state.manual.target.adAccountId = visibleAccounts[0].id;
     }
     if (!state.manual.sourceId) {
       state.manual.sourceId = state.manual.facebookPages[0]?.id || state.manual.instagramAccounts[0]?.id || "";
@@ -1249,8 +1317,12 @@ function renderManual() {
   dom.pathRule.querySelector("strong").textContent = currentRule ? currentRule.name : "Facoltativa";
   dom.pathRule.classList.toggle("done", Boolean(currentRule));
 
-  // Selectors
-  dom.adAccountSelect.innerHTML = m.adAccounts.map(a => `<option value="${a.id}" ${a.id === m.target.adAccountId ? "selected" : ""}>${escapeHtml(a.name)} (${a.id})</option>`).join("");
+  // Selectors (Filtering hidden/archived accounts in manual unless toggle checked)
+  const visibleManualAccounts = (state.allAdAccounts || []).filter(a => state.showHiddenInManual || !state.hiddenAccountIds.has(a.id) || a.id === m.target.adAccountId);
+  dom.adAccountSelect.innerHTML = visibleManualAccounts.map(a => {
+    const isArchived = state.hiddenAccountIds.has(a.id);
+    return `<option value="${a.id}" ${a.id === m.target.adAccountId ? "selected" : ""}>${escapeHtml(a.name)} (${a.id})${isArchived ? " [Archiviato]" : ""}</option>`;
+  }).join("");
   dom.campaignSelect.innerHTML = m.campaigns.map(c => `<option value="${c.id}" ${c.id === m.target.campaignId ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
   dom.adsetSelect.innerHTML = m.adsets.map(a => `<option value="${a.id}" ${a.id === m.target.adsetId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
   dom.ruleSelect.innerHTML = `<option value="">Nessuna regola</option>` + m.rules.map(r => `<option value="${r.id}" ${r.id === m.target.ruleId ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("");
@@ -1509,6 +1581,113 @@ function setupManualListeners() {
 }
 
 // -----------------------------------------------------------------------------
+// Account Management & Archive Dialog Logic
+// -----------------------------------------------------------------------------
+function updateHiddenAccountsCount() {
+  if (dom.hiddenAccountsCountManual) {
+    dom.hiddenAccountsCountManual.textContent = state.hiddenAccountIds.size;
+  }
+}
+
+function openManageAccountsDialog() {
+  if (!dom.manageAccountsDialog) return;
+  renderManageAccountsList();
+  dom.manageAccountsDialog.showModal();
+}
+
+function renderManageAccountsList(searchQuery = "") {
+  const container = dom.manageAccountsList;
+  if (!container) return;
+  container.innerHTML = "";
+
+  const query = (searchQuery || dom.manageAccountsSearch?.value || "").toLowerCase().trim();
+  const accounts = (state.allAdAccounts || []).filter(a => {
+    if (!query) return true;
+    return a.name.toLowerCase().includes(query) || a.id.toLowerCase().includes(query);
+  });
+
+  if (!accounts.length) {
+    container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 24px;">Nessun account trovato</div>`;
+    return;
+  }
+
+  accounts.forEach(acc => {
+    const isHidden = state.hiddenAccountIds.has(acc.id);
+    const row = document.createElement("div");
+    row.className = `account-manage-item ${isHidden ? 'is-hidden' : ''}`;
+    row.innerHTML = `
+      <div class="account-manage-info">
+        <strong>${escapeHtml(acc.name)} ${isHidden ? '<span class="badge-archived">Archiviato</span>' : ''}</strong>
+        <span>${escapeHtml(acc.id)} · ${escapeHtml(acc.currency || 'EUR')} · ${escapeHtml(acc.timezone_name || 'N/D')}</span>
+      </div>
+      <button class="btn btn-sm ${isHidden ? 'btn-secondary' : 'btn-ghost'} toggle-archive-btn" data-id="${acc.id}" type="button">
+        ${isHidden ? '🙈 Ripristina' : '👁️ Archivia'}
+      </button>
+    `;
+
+    row.querySelector(".toggle-archive-btn").addEventListener("click", () => {
+      if (state.hiddenAccountIds.has(acc.id)) {
+        state.hiddenAccountIds.delete(acc.id);
+      } else {
+        state.hiddenAccountIds.add(acc.id);
+      }
+      renderManageAccountsList();
+    });
+
+    container.appendChild(row);
+  });
+}
+
+async function saveManagedAccounts() {
+  const hiddenArray = Array.from(state.hiddenAccountIds);
+  try {
+    await api("/api/settings/hidden-accounts", {
+      method: "POST",
+      body: JSON.stringify({ hiddenAccounts: hiddenArray })
+    });
+    try {
+      localStorage.setItem("autosponsor_hidden_accounts", JSON.stringify(hiddenArray));
+    } catch {}
+
+    updateHiddenAccountsCount();
+    renderManual();
+
+    // If modal is open, re-populate modal accounts
+    if (dom.automationModal.open) {
+      await populateModalAdAccounts(dom.autoAdAccountSelect.value);
+    }
+
+    dom.manageAccountsDialog.close();
+    showBanner("Impostazioni account pubblicitari salvate", "info");
+  } catch (err) {
+    showBanner(`Errore salvataggio: ${err.message}`, "danger");
+  }
+}
+
+function setupAccountManagement() {
+  dom.manageManualAccountsBtn?.addEventListener("click", () => openManageAccountsDialog());
+  dom.manageModalAccountsBtn?.addEventListener("click", () => openManageAccountsDialog());
+
+  dom.manageAccountsSearch?.addEventListener("input", (e) => {
+    renderManageAccountsList(e.target.value);
+  });
+
+  dom.restoreAllAccountsBtn?.addEventListener("click", () => {
+    state.hiddenAccountIds.clear();
+    renderManageAccountsList();
+  });
+
+  dom.saveManagedAccountsBtn?.addEventListener("click", async () => {
+    await saveManagedAccounts();
+  });
+
+  dom.showHiddenManualAccountsToggle?.addEventListener("change", (e) => {
+    state.showHiddenInManual = e.target.checked;
+    renderManual();
+  });
+}
+
+// -----------------------------------------------------------------------------
 // App Initialization
 // -----------------------------------------------------------------------------
 async function initApp() {
@@ -1517,6 +1696,7 @@ async function initApp() {
   setupGlobalRun();
   setupGuideActions();
   setupManualListeners();
+  setupAccountManagement();
 
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get("login") === "ok") {
@@ -1536,4 +1716,5 @@ async function initApp() {
 }
 
 window.addEventListener("DOMContentLoaded", initApp);
+
 

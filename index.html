@@ -199,10 +199,17 @@
               Cerca regola
               <input id="ruleSearch" type="search" placeholder="Nome regola..." autocomplete="off">
             </label>
-            <label>
-              Account pubblicitario
+            <div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+                <label style="margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--text-muted);" for="adAccountSelect">Account pubblicitario</label>
+                <button class="btn btn-ghost btn-xs" id="manageManualAccountsBtn" type="button" title="Gestisci e archivia account">⚙️ Gestisci</button>
+              </div>
               <select id="adAccountSelect"></select>
-            </label>
+              <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
+                <input type="checkbox" id="showHiddenManualAccountsToggle" style="width: auto; margin: 0;">
+                <label for="showHiddenManualAccountsToggle" style="font-size: 0.72rem; color: var(--text-dim); cursor: pointer; display: inline;">Mostra archiviati (<span id="hiddenAccountsCountManual">0</span>)</label>
+              </div>
+            </div>
             <label>
               Campagna
               <select id="campaignSelect"></select>
@@ -491,7 +498,10 @@
           <!-- 3. Target Destination -->
           <div class="form-row three-cols">
             <div class="form-group">
-              <label for="autoAdAccountSelect">Account Ads <span class="required">*</span></label>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <label for="autoAdAccountSelect" style="margin: 0;">Account Ads <span class="required">*</span></label>
+                <button class="btn btn-ghost btn-xs" id="manageModalAccountsBtn" type="button" title="Gestisci e archivia account">⚙️ Gestisci</button>
+              </div>
               <select id="autoAdAccountSelect" required></select>
             </div>
             <div class="form-group">
@@ -623,6 +633,28 @@
         <div class="dialog-actions">
           <button class="btn btn-secondary" id="copyExportBtn" type="button">Copia Dati</button>
           <button class="btn btn-primary" value="close" type="submit">Fine</button>
+        </div>
+    <!-- Manage & Archive Accounts Dialog -->
+    <dialog class="app-dialog" id="manageAccountsDialog" style="max-width: 620px;">
+      <form method="dialog">
+        <div class="dialog-header">
+          <h2>Gestione Account Pubblicitari</h2>
+          <button class="icon-button" value="close" type="submit" aria-label="Chiudi">✕</button>
+        </div>
+        <div class="dialog-body">
+          <p style="color: var(--text-dim); font-size: 0.85rem; margin-top: 0; line-height: 1.4;">
+            Archivia o nascondi gli account Meta che non utilizzi per non vederli nei menu a tendina. Puoi ripristinarli in qualsiasi momento.
+          </p>
+          <div class="form-group" style="margin-bottom: 12px;">
+            <input id="manageAccountsSearch" type="search" placeholder="Cerca account per nome o ID..." autocomplete="off">
+          </div>
+          <div id="manageAccountsList" style="max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+        <div class="dialog-actions" style="justify-content: space-between;">
+          <button class="btn btn-ghost" id="restoreAllAccountsBtn" type="button">Ripristina Tutti</button>
+          <button class="btn btn-primary" id="saveManagedAccountsBtn" type="button">Salva Modifiche</button>
         </div>
       </form>
     </dialog>

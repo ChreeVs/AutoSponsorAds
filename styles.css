@@ -1344,3 +1344,60 @@ textarea:focus {
   -webkit-box-orient: vertical;
 }
 
+/* Account Management & Archive */
+.btn-xs {
+  padding: 3px 8px;
+  font-size: 0.74rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.account-manage-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  gap: 12px;
+  transition: all 0.2s ease;
+}
+
+.account-manage-item.is-hidden {
+  opacity: 0.55;
+  border-style: dashed;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.account-manage-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.account-manage-info strong {
+  font-size: 0.9rem;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-manage-info span {
+  font-size: 0.74rem;
+  color: var(--text-dim);
+}
+
+.badge-archived {
+  display: inline-block;
+  font-size: 0.68rem;
+  padding: 1px 6px;
+  background: rgba(244, 63, 94, 0.15);
+  color: #fb7185;
+  border-radius: var(--radius-full);
+  font-weight: 700;
+  margin-left: 6px;
+}
+

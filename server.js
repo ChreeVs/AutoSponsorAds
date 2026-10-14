@@ -237,6 +237,23 @@ async function handleApi(req, res, url) {
     }
 
     // -------------------------------------------------------------------------
+    // SETTINGS (Hidden / Archived Ad Accounts)
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/settings/hidden-accounts" && req.method === "GET") {
+      const raw = await db.getSetting("hidden_ad_accounts");
+      let hiddenAccounts = [];
+      try { hiddenAccounts = raw ? JSON.parse(raw) : []; } catch {}
+      return json(res, 200, { hiddenAccounts });
+    }
+
+    if (url.pathname === "/api/settings/hidden-accounts" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const hiddenAccounts = Array.isArray(body.hiddenAccounts) ? body.hiddenAccounts : [];
+      await db.setSetting("hidden_ad_accounts", JSON.stringify(hiddenAccounts));
+      return json(res, 200, { ok: true, hiddenAccounts });
+    }
+
+    // -------------------------------------------------------------------------
     // META GRAPH API PROXIES (Manual Bulk Creation & Selectors)
     // -------------------------------------------------------------------------
     if (url.pathname === "/api/meta/create-ads" && req.method === "POST") {
@@ -341,12 +358,17 @@ async function handleApi(req, res, url) {
       } catch (error) {
         adAccountsError = error.message;
       }
+      const rawHidden = await db.getSetting("hidden_ad_accounts");
+      let hiddenAccounts = [];
+      try { hiddenAccounts = rawHidden ? JSON.parse(rawHidden) : []; } catch {}
+
       return json(res, 200, {
         apiVersion: metaService.apiVersion,
         loginConfigId: env.META_LOGIN_CONFIG_ID || null,
         ...metaService.configuredSources(),
         adAccounts,
-        adAccountsError
+        adAccountsError,
+        hiddenAccounts
       });
     }
 

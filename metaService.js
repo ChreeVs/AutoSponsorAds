@@ -151,48 +151,87 @@ class MetaService {
     };
   }
 
+  async listUserPages() {
+    try {
+      const payload = await this.graph("/me/accounts", {
+        fields: "id,name,username,instagram_business_account{id,username,name}",
+        limit: "100"
+      });
+      const pages = payload.data || [];
+      return {
+        facebookPages: pages.map((page) => ({
+          id: page.id,
+          label: page.name || page.username || page.id,
+          name: page.name || page.username || "",
+          sourceType: "user_account"
+        })),
+        instagramAccounts: pages.map((page) => {
+          const instagram = page.instagram_business_account;
+          if (!instagram?.id) return null;
+          return {
+            id: instagram.id,
+            label: instagram.username || instagram.name || page.name || instagram.id,
+            name: instagram.name || instagram.username || "",
+            pageId: page.id,
+            pageName: page.name || "",
+            sourceType: "user_account"
+          };
+        }).filter(Boolean)
+      };
+    } catch {
+      return { facebookPages: [], instagramAccounts: [] };
+    }
+  }
+
   async listSourcesForAdAccount(accountId) {
     const fallback = this.configuredSources();
-    if (!accountId) return { ...fallback, mode: "configured", note: "Account pubblicitario non selezionato." };
+    const userPages = await this.listUserPages();
+
+    if (!accountId) {
+      return {
+        facebookPages: this.dedupeById([...fallback.facebookPages, ...userPages.facebookPages]),
+        instagramAccounts: this.dedupeById([...fallback.instagramAccounts, ...userPages.instagramAccounts]),
+        mode: "user_or_configured",
+        note: "Account pubblicitario non specificato."
+      };
+    }
 
     try {
       const account = await this.graph(`/${accountId}`, { fields: "id,name,business{id,name}" });
       const businessId = account.business?.id;
-      if (!businessId) {
-        return { ...fallback, mode: "configured", note: "Questo account non espone un Business Manager collegato: uso le fonti configurate." };
-      }
 
-      const collected = { facebookPages: [], instagramAccounts: [] };
-      const errors = [];
-      for (const [edge, sourceType] of [["owned_pages", "business_owned"], ["client_pages", "business_client"]]) {
-        try {
-          const sources = await this.listBusinessPages(businessId, edge, sourceType);
-          collected.facebookPages.push(...sources.facebookPages);
-          collected.instagramAccounts.push(...sources.instagramAccounts);
-        } catch (error) {
-          errors.push(`${edge}: ${error.message}`);
+      const collected = {
+        facebookPages: [...userPages.facebookPages],
+        instagramAccounts: [...userPages.instagramAccounts]
+      };
+
+      if (businessId) {
+        for (const [edge, sourceType] of [["owned_pages", "business_owned"], ["client_pages", "business_client"]]) {
+          try {
+            const sources = await this.listBusinessPages(businessId, edge, sourceType);
+            collected.facebookPages.push(...sources.facebookPages);
+            collected.instagramAccounts.push(...sources.instagramAccounts);
+          } catch {}
         }
       }
 
-      const facebookPages = this.dedupeById(collected.facebookPages);
-      const instagramAccounts = this.dedupeById(collected.instagramAccounts);
-      if (!facebookPages.length && !instagramAccounts.length) {
-        return {
-          ...fallback,
-          mode: "configured",
-          note: errors.length ? `Meta non ha restituito pagine dal business: ${errors.join(" | ")}` : "Nessuna pagina business trovata: uso le fonti configurate."
-        };
-      }
+      const facebookPages = this.dedupeById([...fallback.facebookPages, ...collected.facebookPages]);
+      const instagramAccounts = this.dedupeById([...fallback.instagramAccounts, ...collected.instagramAccounts]);
 
       return {
         facebookPages,
         instagramAccounts,
-        mode: "business",
-        business: account.business,
-        note: `Fonti prese dal Business Manager ${account.business.name || businessId}.`
+        mode: businessId ? "business" : "user_or_configured",
+        business: account.business || null,
+        note: businessId ? `Fonti dal Business Manager ${account.business.name || businessId}.` : "Fonti dirette dell'utente collegato."
       };
     } catch (error) {
-      return { ...fallback, mode: "configured", note: `Non riesco a leggere il business dell'account: ${error.message}` };
+      return {
+        facebookPages: this.dedupeById([...fallback.facebookPages, ...userPages.facebookPages]),
+        instagramAccounts: this.dedupeById([...fallback.instagramAccounts, ...userPages.instagramAccounts]),
+        mode: "configured",
+        note: `Lettura account Meta: ${error.message}`
+      };
     }
   }
 
