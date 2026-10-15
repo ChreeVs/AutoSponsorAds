@@ -153,7 +153,7 @@ class AutomationEngine {
               automation.adset_id = newAdset.id;
               automation.adset_name = newAdset.name || automation.adset_name;
               await db.saveAutomation(automation);
-              console.log(`[ENGINE] Creato nuovo AdSet ${newAdset.id} ("${newAdset.name}") duplicando da ${sourceAdsetId} per proseguire l'automazione.`);
+              console.log(`[ENGINE] Creato nuovo AdSet ${newAdset.id} ("${newAdset.name}") [STATO: ATTIVO] duplicando da ${sourceAdsetId} per proseguire l'automazione.`);
             } else if (strategy === "STOP_AND_ALERT") {
               report.errorsCount++;
               report.errors.push({

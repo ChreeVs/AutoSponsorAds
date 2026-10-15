@@ -334,10 +334,12 @@ class MetaService {
     }
 
     const created = await this.graphPost(`/${adAccountId}/adsets`, params);
+    console.log(`[META] Creato nuovo AdSet ${created.id} ("${targetName}") con stato ATTIVO (ACTIVE)`);
     return {
       id: created.id,
       name: targetName,
-      campaign_id: original.campaign_id
+      campaign_id: original.campaign_id,
+      status: "ACTIVE"
     };
   }
 
