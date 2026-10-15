@@ -143,6 +143,9 @@ const dom = {
   sourcePreviewCards: document.getElementById("sourcePreviewCards"),
   sourcePreviewBadge: document.getElementById("sourcePreviewBadge"),
   duplicateFromModalBtn: document.getElementById("duplicateFromModalBtn"),
+  cloneAdsetBox: document.getElementById("cloneAdsetBox"),
+  autoAdsetCloneSourceSelect: document.getElementById("autoAdsetCloneSourceSelect"),
+  autoAdsetCloneNameInput: document.getElementById("autoAdsetCloneNameInput"),
   manageModalAccountsBtn: document.getElementById("manageModalAccountsBtn"),
   manageManualAccountsBtn: document.getElementById("manageManualAccountsBtn"),
   showHiddenManualAccountsToggle: document.getElementById("showHiddenManualAccountsToggle"),
@@ -355,7 +358,7 @@ function renderAutomationsGrid() {
         <div class="auto-detail-item">
           <span>Limite 50 Ads</span>
           <strong title="Strategia gestione limite 50 inserzioni per AdSet">
-            ${item.adset_full_strategy === 'CREATE_NEW_ADSET' ? '➕ Nuovo AdSet' : item.adset_full_strategy === 'STOP_AND_ALERT' ? '⏸️ Stop & Avviso' : '🔄 Rotazione'}
+            ${item.adset_full_strategy === 'CREATE_NEW_ADSET' ? '📋 Duplica da pre-esistente' : item.adset_full_strategy === 'STOP_AND_ALERT' ? '⏸️ Stop & Avviso' : '🔄 Rotazione'}
           </strong>
         </div>
       </div>
@@ -644,6 +647,12 @@ function setupModal() {
     updateLiveAdNamePreview();
   });
 
+  dom.autoAdsetStrategySelect?.addEventListener("change", (e) => {
+    if (dom.cloneAdsetBox) {
+      dom.cloneAdsetBox.style.display = (e.target.value === "CREATE_NEW_ADSET") ? "block" : "none";
+    }
+  });
+
   // Token Pills in Naming Pattern
   document.querySelectorAll(".tag-pills .pill").forEach(pill => {
     pill.addEventListener("click", () => {
@@ -679,7 +688,12 @@ async function openNewModal() {
   dom.autoFilterKeywords.value = "";
   dom.autoIntervalSelect.value = "12";
   dom.autoAdStatusSelect.value = "PAUSED";
-  if (dom.autoAdsetStrategySelect) dom.autoAdsetStrategySelect.value = "ROTATE_OLDEST";
+  if (dom.autoAdsetStrategySelect) {
+    dom.autoAdsetStrategySelect.value = "ROTATE_OLDEST";
+    if (dom.cloneAdsetBox) dom.cloneAdsetBox.style.display = "none";
+  }
+  if (dom.autoAdsetCloneNameInput) dom.autoAdsetCloneNameInput.value = "";
+  if (dom.autoAdsetCloneSourceSelect) dom.autoAdsetCloneSourceSelect.innerHTML = `<option value="">Usa lo stesso gruppo iniziale</option>`;
 
   // Default start time to NOW in local datetime-local format
   if (dom.autoStartTimeInput) {
@@ -712,7 +726,15 @@ async function openEditModal(id) {
   dom.autoFilterKeywords.value = item.filter_keywords || "";
   dom.autoIntervalSelect.value = String(item.check_interval_hours || 12);
   dom.autoAdStatusSelect.value = item.ad_status || "PAUSED";
-  if (dom.autoAdsetStrategySelect) dom.autoAdsetStrategySelect.value = item.adset_full_strategy || "ROTATE_OLDEST";
+  if (dom.autoAdsetStrategySelect) {
+    dom.autoAdsetStrategySelect.value = item.adset_full_strategy || "ROTATE_OLDEST";
+    if (dom.cloneAdsetBox) {
+      dom.cloneAdsetBox.style.display = (item.adset_full_strategy === "CREATE_NEW_ADSET") ? "block" : "none";
+    }
+  }
+  if (dom.autoAdsetCloneNameInput) {
+    dom.autoAdsetCloneNameInput.value = item.adset_clone_name_pattern || "";
+  }
 
   if (dom.autoStartTimeInput) {
     const rawStart = item.start_time || item.created_at || new Date().toISOString();
@@ -726,7 +748,7 @@ async function openEditModal(id) {
   dom.btnPlatformIG.classList.toggle("active", item.platform === "Instagram");
 
   if (dom.duplicateFromModalBtn) dom.duplicateFromModalBtn.style.display = "inline-flex";
-  await populateModalAdAccounts(item.ad_account_id, item.campaign_id, item.adset_id, item.rule_id);
+  await populateModalAdAccounts(item.ad_account_id, item.campaign_id, item.adset_id, item.rule_id, item.adset_clone_source_id);
   if (item.source_id && dom.autoSourceSelect) {
     dom.autoSourceSelect.value = item.source_id;
   }
@@ -776,7 +798,7 @@ function populateModalSources(platform, selectedId = "") {
   loadSourcePreviewPosts();
 }
 
-async function populateModalAdAccounts(targetAccountId = "", targetCampaignId = "", targetAdsetId = "", targetRuleId = "") {
+async function populateModalAdAccounts(targetAccountId = "", targetCampaignId = "", targetAdsetId = "", targetRuleId = "", targetCloneSourceId = "") {
   const select = dom.autoAdAccountSelect;
   select.innerHTML = "";
 
@@ -801,15 +823,12 @@ async function populateModalAdAccounts(targetAccountId = "", targetCampaignId = 
   if (selectedAccountId) {
     await loadModalSourcesForAccount(selectedAccountId);
     populateModalSources(state.modalSelectedPlatform);
-    await populateModalCampaigns(selectedAccountId, targetCampaignId);
+    await populateModalCampaigns(selectedAccountId, targetCampaignId, targetAdsetId, targetCloneSourceId);
     await populateModalRules(selectedAccountId, targetRuleId);
-    if (targetCampaignId) {
-      await populateModalAdsets(selectedAccountId, targetCampaignId, targetAdsetId);
-    }
   }
 }
 
-async function populateModalCampaigns(accountId, targetCampaignId = "") {
+async function populateModalCampaigns(accountId, targetCampaignId = "", targetAdsetId = "", targetCloneSourceId = "") {
   const select = dom.autoCampaignSelect;
   select.innerHTML = `<option value="">Caricamento campagne...</option>`;
 
@@ -833,21 +852,24 @@ async function populateModalCampaigns(accountId, targetCampaignId = "") {
 
     const activeCampaignId = select.value || campaigns[0]?.id;
     if (activeCampaignId) {
-      await populateModalAdsets(accountId, activeCampaignId);
+      await populateModalAdsets(accountId, activeCampaignId, targetAdsetId, targetCloneSourceId);
     }
   } catch (err) {
     select.innerHTML = `<option value="">Errore campagne: ${err.message}</option>`;
   }
 }
 
-async function populateModalAdsets(accountId, campaignId, targetAdsetId = "") {
+async function populateModalAdsets(accountId, campaignId, targetAdsetId = "", targetCloneSourceId = "") {
   const select = dom.autoAdsetSelect;
+  const cloneSelect = dom.autoAdsetCloneSourceSelect;
   select.innerHTML = `<option value="">Caricamento gruppi...</option>`;
+  if (cloneSelect) cloneSelect.innerHTML = `<option value="">Caricamento gruppi...</option>`;
 
   try {
     const payload = await api(`/api/meta/adsets?accountId=${encodeURIComponent(accountId)}&campaignId=${encodeURIComponent(campaignId)}`);
     const adsets = payload.data || [];
     select.innerHTML = "";
+    if (cloneSelect) cloneSelect.innerHTML = `<option value="">Usa lo stesso gruppo iniziale</option>`;
 
     if (!adsets.length) {
       select.innerHTML = `<option value="">Nessun gruppo inserzioni</option>`;
@@ -857,12 +879,41 @@ async function populateModalAdsets(accountId, campaignId, targetAdsetId = "") {
     adsets.forEach(a => {
       const opt = document.createElement("option");
       opt.value = a.id;
+      opt.dataset.name = a.name;
       opt.textContent = `${a.name} [${a.effective_status || a.status}]`;
       if (targetAdsetId ? a.id === targetAdsetId : false) opt.selected = true;
       select.appendChild(opt);
+
+      if (cloneSelect) {
+        const cloneOpt = document.createElement("option");
+        cloneOpt.value = a.id;
+        cloneOpt.dataset.name = a.name;
+        cloneOpt.textContent = `${a.name} [${a.effective_status || a.status}]`;
+        if (targetCloneSourceId ? a.id === targetCloneSourceId : false) cloneOpt.selected = true;
+        cloneSelect.appendChild(cloneOpt);
+      }
     });
+
+    if (targetAdsetId && !adsets.some(a => a.id === targetAdsetId)) {
+      const opt = document.createElement("option");
+      opt.value = targetAdsetId;
+      opt.dataset.name = targetAdsetId;
+      opt.textContent = `Gruppo configurato (${targetAdsetId})`;
+      opt.selected = true;
+      select.prepend(opt);
+    }
+
+    if (cloneSelect && targetCloneSourceId && !adsets.some(a => a.id === targetCloneSourceId)) {
+      const cloneOpt = document.createElement("option");
+      cloneOpt.value = targetCloneSourceId;
+      cloneOpt.dataset.name = targetCloneSourceId;
+      cloneOpt.textContent = `Gruppo sorgente configurato (${targetCloneSourceId})`;
+      cloneOpt.selected = true;
+      cloneSelect.appendChild(cloneOpt);
+    }
   } catch (err) {
     select.innerHTML = `<option value="">Errore gruppi: ${err.message}</option>`;
+    if (cloneSelect) cloneSelect.innerHTML = `<option value="">Errore gruppi: ${err.message}</option>`;
   }
 }
 
@@ -910,7 +961,9 @@ async function saveAutomationFromModal() {
     ad_name_pattern: dom.autoNamingPattern.value || "ADV - {platform} - {post}",
     filter_keywords: dom.autoFilterKeywords.value.trim(),
     start_time: dom.autoStartTimeInput?.value ? new Date(dom.autoStartTimeInput.value).toISOString() : new Date().toISOString(),
-    adset_full_strategy: dom.autoAdsetStrategySelect?.value || "ROTATE_OLDEST"
+    adset_full_strategy: dom.autoAdsetStrategySelect?.value || "ROTATE_OLDEST",
+    adset_clone_source_id: (dom.autoAdsetStrategySelect?.value === "CREATE_NEW_ADSET") ? (dom.autoAdsetCloneSourceSelect?.value || "") : "",
+    adset_clone_name_pattern: (dom.autoAdsetStrategySelect?.value === "CREATE_NEW_ADSET") ? (dom.autoAdsetCloneNameInput?.value?.trim() || "") : ""
   };
 
   try {
@@ -1331,7 +1384,7 @@ function renderManual() {
     return `<option value="${a.id}" ${a.id === m.target.adAccountId ? "selected" : ""}>${escapeHtml(a.name)} (${a.id})${isArchived ? " [Archiviato]" : ""}</option>`;
   }).join("");
   dom.campaignSelect.innerHTML = m.campaigns.map(c => `<option value="${c.id}" ${c.id === m.target.campaignId ? "selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
-  dom.adsetSelect.innerHTML = m.adsets.map(a => `<option value="${a.id}" ${a.id === m.target.adsetId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
+  dom.adsetSelect.innerHTML = m.adsets.map(a => `<option value="${a.id}" data-name="${escapeHtml(a.name)}" ${a.id === m.target.adsetId ? "selected" : ""}>${escapeHtml(a.name)}</option>`).join("");
   dom.ruleSelect.innerHTML = `<option value="">Nessuna regola</option>` + m.rules.map(r => `<option value="${r.id}" ${r.id === m.target.ruleId ? "selected" : ""}>${escapeHtml(r.name)}</option>`).join("");
 
   // Sources dropdown

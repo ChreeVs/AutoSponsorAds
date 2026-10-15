@@ -145,6 +145,8 @@ async function handleApi(req, res, url) {
         filter_keywords: body.filter_keywords || "",
         start_time: body.start_time || new Date().toISOString(),
         adset_full_strategy: body.adset_full_strategy || "ROTATE_OLDEST",
+        adset_clone_source_id: body.adset_clone_source_id || "",
+        adset_clone_name_pattern: body.adset_clone_name_pattern || "",
         created_at: new Date().toISOString()
       };
 
@@ -200,6 +202,8 @@ async function handleApi(req, res, url) {
           start_time: now,
           ad_status: existing.ad_status || "PAUSED",
           adset_full_strategy: existing.adset_full_strategy || "ROTATE_OLDEST",
+          adset_clone_source_id: existing.adset_clone_source_id || "",
+          adset_clone_name_pattern: existing.adset_clone_name_pattern || "",
           created_at: now,
           last_checked_at: null,
           last_run_status: "IDLE",
@@ -390,6 +394,15 @@ async function handleApi(req, res, url) {
       const accountId = url.searchParams.get("accountId");
       const campaignId = url.searchParams.get("campaignId");
       return json(res, 200, await metaService.listAdsets(accountId, campaignId));
+    }
+
+    if (url.pathname === "/api/meta/adsets/clone" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!body.accountId || !body.adsetId) {
+        return json(res, 400, { ok: false, error: "accountId e adsetId sono obbligatori" });
+      }
+      const cloned = await metaService.cloneAdset(body.accountId, body.adsetId, body.newName);
+      return json(res, 200, { ok: true, data: cloned });
     }
 
     if (url.pathname === "/api/meta/rules") {

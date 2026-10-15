@@ -526,10 +526,31 @@
               <label for="autoAdsetStrategySelect">Se il Gruppo Inserzioni è pieno (limite 50 ads) <span class="required">*</span></label>
               <select id="autoAdsetStrategySelect">
                 <option value="ROTATE_OLDEST" selected>🔄 Rotazione: Archivia la più vecchia (Consigliato)</option>
-                <option value="CREATE_NEW_ADSET">➕ Crea nuovo AdSet automatico</option>
+                <option value="CREATE_NEW_ADSET">📋 Crea nuovo Adset da pre-esistente</option>
                 <option value="STOP_AND_ALERT">⏸️ Blocca creazione e segnala avviso</option>
               </select>
               <small class="help-text">Supera in automatico il limite Meta di 50 ads per AdSet.</small>
+            </div>
+          </div>
+
+          <!-- Opzioni per Duplicazione AdSet da pre-esistente -->
+          <div class="clone-adset-box" id="cloneAdsetBox" style="display: none;">
+            <div class="clone-adset-box-header">
+              <span>📋 Duplicazione AdSet da Pre-Esistente</span>
+            </div>
+            <div class="form-row">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="autoAdsetCloneSourceSelect">Gruppo da duplicare (Sorgente) <span class="required">*</span></label>
+                <select id="autoAdsetCloneSourceSelect">
+                  <option value="">Usa lo stesso gruppo iniziale</option>
+                </select>
+                <small class="help-text">Vengono ereditati posizionamento, budget, targeting e ottimizzazione.</small>
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label for="autoAdsetCloneNameInput">Nome nuovo gruppo (se si vuole personalizzare)</label>
+                <input id="autoAdsetCloneNameInput" type="text" placeholder="Es. NOME GRUPPO - Data - Copia" autocomplete="off">
+                <small class="help-text">Se vuoto: <code>NOME GRUPPO INSERZIONE - Data - Copia</code></small>
+              </div>
             </div>
           </div>
 

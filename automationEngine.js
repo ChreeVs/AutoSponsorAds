@@ -122,12 +122,23 @@ class AutomationEngine {
                 await this.meta.archiveAd(oldest.id);
                 console.log(`[ENGINE] Archiviata inserzione più vecchia: ${oldest.name} (${oldest.id}) per liberare slot.`);
               }
-            } else if (strategy === "CREATE_NEW_ADSET") {
-              const newAdset = await this.meta.cloneAdset(automation.ad_account_id, currentAdsetId);
+            } else if (strategy === "CREATE_NEW_ADSET" || strategy === "CLONE_EXISTING_ADSET") {
+              const sourceAdsetId = automation.adset_clone_source_id || currentAdsetId;
+              let customName = null;
+              if (automation.adset_clone_name_pattern && automation.adset_clone_name_pattern.trim()) {
+                const dateFormatted = new Date().toLocaleDateString("it-IT");
+                customName = automation.adset_clone_name_pattern
+                  .replace(/\{date\}/gi, dateFormatted)
+                  .replace(/\{adset\}/gi, automation.adset_name || "AdSet")
+                  .trim();
+              }
+
+              const newAdset = await this.meta.cloneAdset(automation.ad_account_id, sourceAdsetId, customName);
               currentAdsetId = newAdset.id;
               automation.adset_id = newAdset.id;
+              automation.adset_name = newAdset.name || automation.adset_name;
               await db.saveAutomation(automation);
-              console.log(`[ENGINE] Creato nuovo AdSet automatico ${newAdset.id} per proseguire l'automazione.`);
+              console.log(`[ENGINE] Creato nuovo AdSet ${newAdset.id} ("${newAdset.name}") duplicando da ${sourceAdsetId} per proseguire l'automazione.`);
             } else if (strategy === "STOP_AND_ALERT") {
               report.errorsCount++;
               report.errors.push({

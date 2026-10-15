@@ -289,13 +289,24 @@ class MetaService {
     return await this.graphPost(`/${adId}`, { status: "ARCHIVED" });
   }
 
+  formatDuplicateAdsetName(originalName) {
+    const d = new Date();
+    const day = String(d.getDate()).padStart(2, "0");
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const year = d.getFullYear();
+    const dateFormatted = `${day}/${month}/${year}`;
+    return `${originalName} - ${dateFormatted} - Copia`;
+  }
+
   async cloneAdset(adAccountId, originalAdsetId, newName) {
     const original = await this.graph(`/${originalAdsetId}`, {
-      fields: "name,campaign_id,daily_budget,lifetime_budget,optimization_goal,billing_event,targeting,bid_amount,destination_type"
+      fields: "name,campaign_id,daily_budget,lifetime_budget,optimization_goal,billing_event,targeting,bid_amount,bid_strategy,destination_type,promoted_object,attribution_spec,tune_for_category,end_time"
     });
 
+    const targetName = (newName && newName.trim()) || this.formatDuplicateAdsetName(original.name);
+
     const params = {
-      name: newName || `${original.name} - Batch ${Date.now().toString().slice(-4)}`,
+      name: targetName,
       campaign_id: original.campaign_id,
       optimization_goal: original.optimization_goal,
       billing_event: original.billing_event,
@@ -304,11 +315,30 @@ class MetaService {
     };
 
     if (original.daily_budget) params.daily_budget = original.daily_budget;
-    if (original.lifetime_budget) params.lifetime_budget = original.lifetime_budget;
+    if (original.lifetime_budget) {
+      params.lifetime_budget = original.lifetime_budget;
+      if (original.end_time && new Date(original.end_time).getTime() > Date.now()) {
+        params.end_time = original.end_time;
+      } else {
+        // Meta richiede end_time futura se impostato lifetime_budget (default +30gg)
+        params.end_time = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      }
+    }
     if (original.bid_amount) params.bid_amount = original.bid_amount;
+    if (original.bid_strategy) params.bid_strategy = original.bid_strategy;
     if (original.destination_type) params.destination_type = original.destination_type;
+    if (original.promoted_object) params.promoted_object = original.promoted_object;
+    if (original.attribution_spec) params.attribution_spec = original.attribution_spec;
+    if (original.tune_for_category && original.tune_for_category !== "NONE") {
+      params.tune_for_category = original.tune_for_category;
+    }
 
-    return await this.graphPost(`/${adAccountId}/adsets`, params);
+    const created = await this.graphPost(`/${adAccountId}/adsets`, params);
+    return {
+      id: created.id,
+      name: targetName,
+      campaign_id: original.campaign_id
+    };
   }
 
   async listCampaigns(accountId) {
