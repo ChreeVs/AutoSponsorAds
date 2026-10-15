@@ -132,6 +132,7 @@ const dom = {
   autoCampaignSelect: document.getElementById("autoCampaignSelect"),
   autoAdsetSelect: document.getElementById("autoAdsetSelect"),
   autoRuleSelect: document.getElementById("autoRuleSelect"),
+  autoIntervalInput: document.getElementById("autoIntervalInput"),
   autoIntervalSelect: document.getElementById("autoIntervalSelect"),
   autoAdStatusSelect: document.getElementById("autoAdStatusSelect"),
   autoNamingPattern: document.getElementById("autoNamingPattern"),
@@ -657,10 +658,20 @@ function setupModal() {
   document.querySelectorAll(".tag-pills .pill").forEach(pill => {
     pill.addEventListener("click", () => {
       const tag = pill.getAttribute("data-tag");
+      if (!tag) return;
       const input = dom.autoNamingPattern;
       input.value += ` ${tag}`;
       updateLiveAdNamePreview();
       input.focus();
+    });
+  });
+
+  // Hours presets pills
+  document.querySelectorAll("[data-hours]").forEach(pill => {
+    pill.addEventListener("click", () => {
+      const hours = pill.getAttribute("data-hours");
+      const el = dom.autoIntervalInput || dom.autoIntervalSelect;
+      if (el) el.value = hours;
     });
   });
 
@@ -686,7 +697,8 @@ async function openNewModal() {
   dom.autoNameInput.value = "";
   dom.autoNamingPattern.value = "ADV - {platform} - {post}";
   dom.autoFilterKeywords.value = "";
-  dom.autoIntervalSelect.value = "12";
+  const newIntervalEl = dom.autoIntervalInput || dom.autoIntervalSelect;
+  if (newIntervalEl) newIntervalEl.value = "3";
   dom.autoAdStatusSelect.value = "PAUSED";
   if (dom.autoAdsetStrategySelect) {
     dom.autoAdsetStrategySelect.value = "ROTATE_OLDEST";
@@ -724,7 +736,8 @@ async function openEditModal(id) {
   dom.autoNameInput.value = item.name;
   dom.autoNamingPattern.value = item.ad_name_pattern || "ADV - {platform} - {post}";
   dom.autoFilterKeywords.value = item.filter_keywords || "";
-  dom.autoIntervalSelect.value = String(item.check_interval_hours || 12);
+  const editIntervalEl = dom.autoIntervalInput || dom.autoIntervalSelect;
+  if (editIntervalEl) editIntervalEl.value = String(item.check_interval_hours || 3);
   dom.autoAdStatusSelect.value = item.ad_status || "PAUSED";
   if (dom.autoAdsetStrategySelect) {
     dom.autoAdsetStrategySelect.value = item.adset_full_strategy || "ROTATE_OLDEST";
@@ -956,7 +969,7 @@ async function saveAutomationFromModal() {
     adset_name: adsetOption?.textContent || "",
     rule_id: dom.autoRuleSelect.value || "",
     rule_name: dom.autoRuleSelect.value ? ruleOption?.textContent || "" : "",
-    check_interval_hours: Number(dom.autoIntervalSelect.value) || 12,
+    check_interval_hours: Math.max(1, Number((dom.autoIntervalInput || dom.autoIntervalSelect)?.value) || 3),
     ad_status: dom.autoAdStatusSelect.value || "PAUSED",
     ad_name_pattern: dom.autoNamingPattern.value || "ADV - {platform} - {post}",
     filter_keywords: dom.autoFilterKeywords.value.trim(),
