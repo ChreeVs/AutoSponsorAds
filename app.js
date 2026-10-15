@@ -137,6 +137,7 @@ const dom = {
   autoAdStatusSelect: document.getElementById("autoAdStatusSelect"),
   autoNamingPattern: document.getElementById("autoNamingPattern"),
   autoFilterKeywords: document.getElementById("autoFilterKeywords"),
+  autoExcludeKeywords: document.getElementById("autoExcludeKeywords"),
   autoStartTimeInput: document.getElementById("autoStartTimeInput"),
   autoAdsetStrategySelect: document.getElementById("autoAdsetStrategySelect"),
   liveAdNamePreview: document.getElementById("liveAdNamePreview"),
@@ -362,6 +363,16 @@ function renderAutomationsGrid() {
             ${item.adset_full_strategy === 'CREATE_NEW_ADSET' ? '📋 Duplica da pre-esistente' : item.adset_full_strategy === 'STOP_AND_ALERT' ? '⏸️ Stop & Avviso' : '🔄 Rotazione'}
           </strong>
         </div>
+        ${item.filter_keywords ? `
+        <div class="auto-detail-item">
+          <span>Solo con</span>
+          <strong title="${escapeHtml(item.filter_keywords)}">🔍 ${escapeHtml(item.filter_keywords)}</strong>
+        </div>` : ""}
+        ${item.exclude_keywords ? `
+        <div class="auto-detail-item">
+          <span>Escludi se</span>
+          <strong title="${escapeHtml(item.exclude_keywords)}" style="color: #f87171;">🚫 ${escapeHtml(item.exclude_keywords)}</strong>
+        </div>` : ""}
       </div>
 
       <div class="auto-status-footer">
@@ -697,6 +708,7 @@ async function openNewModal() {
   dom.autoNameInput.value = "";
   dom.autoNamingPattern.value = "ADV - {platform} - {post}";
   dom.autoFilterKeywords.value = "";
+  if (dom.autoExcludeKeywords) dom.autoExcludeKeywords.value = "";
   const newIntervalEl = dom.autoIntervalInput || dom.autoIntervalSelect;
   if (newIntervalEl) newIntervalEl.value = "3";
   dom.autoAdStatusSelect.value = "PAUSED";
@@ -736,6 +748,7 @@ async function openEditModal(id) {
   dom.autoNameInput.value = item.name;
   dom.autoNamingPattern.value = item.ad_name_pattern || "ADV - {platform} - {post}";
   dom.autoFilterKeywords.value = item.filter_keywords || "";
+  if (dom.autoExcludeKeywords) dom.autoExcludeKeywords.value = item.exclude_keywords || "";
   const editIntervalEl = dom.autoIntervalInput || dom.autoIntervalSelect;
   if (editIntervalEl) editIntervalEl.value = String(item.check_interval_hours || 3);
   dom.autoAdStatusSelect.value = item.ad_status || "PAUSED";
@@ -973,6 +986,7 @@ async function saveAutomationFromModal() {
     ad_status: dom.autoAdStatusSelect.value || "PAUSED",
     ad_name_pattern: dom.autoNamingPattern.value || "ADV - {platform} - {post}",
     filter_keywords: dom.autoFilterKeywords.value.trim(),
+    exclude_keywords: dom.autoExcludeKeywords ? dom.autoExcludeKeywords.value.trim() : "",
     start_time: dom.autoStartTimeInput?.value ? new Date(dom.autoStartTimeInput.value).toISOString() : new Date().toISOString(),
     adset_full_strategy: dom.autoAdsetStrategySelect?.value || "ROTATE_OLDEST",
     adset_clone_source_id: (dom.autoAdsetStrategySelect?.value === "CREATE_NEW_ADSET") ? (dom.autoAdsetCloneSourceSelect?.value || "") : "",

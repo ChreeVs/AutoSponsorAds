@@ -101,6 +101,7 @@ async function setupPostgresSchema() {
       ad_status VARCHAR(32) DEFAULT 'PAUSED',
       check_interval_hours INTEGER DEFAULT 12,
       filter_keywords VARCHAR(255) DEFAULT '',
+      exclude_keywords VARCHAR(255) DEFAULT '',
       start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       adset_full_strategy VARCHAR(64) DEFAULT 'ROTATE_OLDEST',
       adset_clone_source_id VARCHAR(128) DEFAULT '',
@@ -115,6 +116,7 @@ async function setupPostgresSchema() {
     ALTER TABLE automations ADD COLUMN IF NOT EXISTS adset_full_strategy VARCHAR(64) DEFAULT 'ROTATE_OLDEST';
     ALTER TABLE automations ADD COLUMN IF NOT EXISTS adset_clone_source_id VARCHAR(128) DEFAULT '';
     ALTER TABLE automations ADD COLUMN IF NOT EXISTS adset_clone_name_pattern VARCHAR(255) DEFAULT '';
+    ALTER TABLE automations ADD COLUMN IF NOT EXISTS exclude_keywords VARCHAR(255) DEFAULT '';
 
     CREATE TABLE IF NOT EXISTS processed_posts (
       id SERIAL PRIMARY KEY,
@@ -173,6 +175,7 @@ function setupSqliteSchema() {
       ad_status TEXT DEFAULT 'PAUSED',
       check_interval_hours INTEGER DEFAULT 12,
       filter_keywords TEXT DEFAULT '',
+      exclude_keywords TEXT DEFAULT '',
       start_time TEXT,
       adset_full_strategy TEXT DEFAULT 'ROTATE_OLDEST',
       adset_clone_source_id TEXT DEFAULT '',
@@ -223,6 +226,7 @@ function setupSqliteSchema() {
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN adset_full_strategy TEXT DEFAULT 'ROTATE_OLDEST';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN adset_clone_source_id TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN adset_clone_name_pattern TEXT DEFAULT '';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN exclude_keywords TEXT DEFAULT '';"); } catch {}
 }
 
 // -----------------------------------------------------------------------------
@@ -265,6 +269,7 @@ async function saveAutomation(item) {
     adset_full_strategy: item.adset_full_strategy || "ROTATE_OLDEST",
     adset_clone_source_id: item.adset_clone_source_id || "",
     adset_clone_name_pattern: item.adset_clone_name_pattern || "",
+    exclude_keywords: item.exclude_keywords || "",
     created_at: item.created_at || now,
     last_run_status: item.last_run_status || "IDLE",
     last_run_message: item.last_run_message || ""
@@ -276,9 +281,9 @@ async function saveAutomation(item) {
         id, name, enabled, platform, source_id, source_name, page_id,
         ad_account_id, campaign_id, campaign_name, adset_id, adset_name,
         rule_id, rule_name, ad_name_pattern, ad_status, check_interval_hours,
-        filter_keywords, start_time, adset_full_strategy, adset_clone_source_id, adset_clone_name_pattern,
+        filter_keywords, exclude_keywords, start_time, adset_full_strategy, adset_clone_source_id, adset_clone_name_pattern,
         created_at, last_checked_at, last_run_status, last_run_message
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         enabled = EXCLUDED.enabled,
@@ -297,6 +302,7 @@ async function saveAutomation(item) {
         ad_status = EXCLUDED.ad_status,
         check_interval_hours = EXCLUDED.check_interval_hours,
         filter_keywords = EXCLUDED.filter_keywords,
+        exclude_keywords = EXCLUDED.exclude_keywords,
         start_time = EXCLUDED.start_time,
         adset_full_strategy = EXCLUDED.adset_full_strategy,
         adset_clone_source_id = EXCLUDED.adset_clone_source_id,
@@ -307,6 +313,7 @@ async function saveAutomation(item) {
       normalized.campaign_id, normalized.campaign_name || "", normalized.adset_id, normalized.adset_name || "",
       normalized.rule_id || "", normalized.rule_name || "", normalized.ad_name_pattern || "ADV - {platform} - {post}",
       normalized.ad_status || "PAUSED", normalized.check_interval_hours || 12, normalized.filter_keywords || "",
+      normalized.exclude_keywords,
       normalized.start_time, normalized.adset_full_strategy, normalized.adset_clone_source_id, normalized.adset_clone_name_pattern,
       normalized.created_at, normalized.last_checked_at || null,
       normalized.last_run_status, normalized.last_run_message
@@ -320,9 +327,9 @@ async function saveAutomation(item) {
         id, name, enabled, platform, source_id, source_name, page_id,
         ad_account_id, campaign_id, campaign_name, adset_id, adset_name,
         rule_id, rule_name, ad_name_pattern, ad_status, check_interval_hours,
-        filter_keywords, start_time, adset_full_strategy, adset_clone_source_id, adset_clone_name_pattern,
+        filter_keywords, exclude_keywords, start_time, adset_full_strategy, adset_clone_source_id, adset_clone_name_pattern,
         created_at, last_checked_at, last_run_status, last_run_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (id) DO UPDATE SET
         name = excluded.name,
         enabled = excluded.enabled,
@@ -341,6 +348,7 @@ async function saveAutomation(item) {
         ad_status = excluded.ad_status,
         check_interval_hours = excluded.check_interval_hours,
         filter_keywords = excluded.filter_keywords,
+        exclude_keywords = excluded.exclude_keywords,
         start_time = excluded.start_time,
         adset_full_strategy = excluded.adset_full_strategy,
         adset_clone_source_id = excluded.adset_clone_source_id,
@@ -353,6 +361,7 @@ async function saveAutomation(item) {
       normalized.campaign_id, normalized.campaign_name || "", normalized.adset_id, normalized.adset_name || "",
       normalized.rule_id || "", normalized.rule_name || "", normalized.ad_name_pattern || "ADV - {platform} - {post}",
       normalized.ad_status || "PAUSED", normalized.check_interval_hours || 12, normalized.filter_keywords || "",
+      normalized.exclude_keywords,
       normalized.start_time, normalized.adset_full_strategy, normalized.adset_clone_source_id, normalized.adset_clone_name_pattern,
       normalized.created_at, normalized.last_checked_at || null,
       normalized.last_run_status, normalized.last_run_message

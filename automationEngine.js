@@ -32,6 +32,14 @@ class AutomationEngine {
     return keywords.some(k => lower.includes(k));
   }
 
+  shouldExclude(text, excludeKeywords) {
+    if (!excludeKeywords || !excludeKeywords.trim()) return false;
+    const keywords = excludeKeywords.split(",").map(k => k.trim().toLowerCase()).filter(Boolean);
+    if (!keywords.length) return false;
+    const lower = (text || "").toLowerCase();
+    return keywords.some(k => lower.includes(k));
+  }
+
   async runSingleAutomation(automationId, triggerType = "MANUAL", force = false) {
     const automation = await db.getAutomation(automationId);
     if (!automation) throw new Error("Automazione non trovata");
@@ -100,8 +108,15 @@ class AutomationEngine {
           continue;
         }
 
-        // 3. Check keywords/hashtags filter
+        // 3. Check keywords/hashtags filter (inclusion)
         if (!this.matchesKeywords(post.message, automation.filter_keywords)) {
+          report.skippedCount++;
+          continue;
+        }
+
+        // 3b. Check exclusion filter (hashtags or keywords that prevent sponsoring)
+        if (this.shouldExclude(post.message, automation.exclude_keywords)) {
+          console.log(`[ENGINE] Post ${post.id} escluso da sponsorizzazione per filtro hashtag/keyword: "${automation.exclude_keywords}"`);
           report.skippedCount++;
           continue;
         }

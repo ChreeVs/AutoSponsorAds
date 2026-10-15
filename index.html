@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=2.3">
+    <link rel="stylesheet" href="styles.css?v=2.4">
   </head>
   <body>
     <!-- App Navigation Header -->
@@ -616,11 +616,18 @@
             </div>
           </div>
 
-          <!-- 7. Filter Keywords -->
-          <div class="form-group">
-            <label for="autoFilterKeywords">Filtro Parole Chiave / Hashtag (Opzionale)</label>
-            <input id="autoFilterKeywords" type="text" placeholder="Es. #sponsor, #promo, offerta (lascia vuoto per tutti i post)" autocomplete="off">
-            <small class="help-text">Se specificato, solo i post contenenti almeno una di queste parole verranno sponsorizzati.</small>
+          <!-- 7. Filter Keywords (Inclusion / Exclusion) -->
+          <div class="form-row">
+            <div class="form-group">
+              <label for="autoFilterKeywords">Filtro Inclusione (Solo con...)</label>
+              <input id="autoFilterKeywords" type="text" placeholder="Es. #sponsor, #promo, offerta" autocomplete="off">
+              <small class="help-text">Sponsorizza <strong>solo</strong> se contiene almeno una parola/hashtag (vuoto = tutti i post).</small>
+            </div>
+            <div class="form-group">
+              <label for="autoExcludeKeywords">Filtro Esclusione (Non sponsorizzare se...)</label>
+              <input id="autoExcludeKeywords" type="text" placeholder="Es. #nosponsor, #organico, noadv" autocomplete="off">
+              <small class="help-text"><strong>Esclude</strong> e non sponsorizza i post contenenti questi hashtag o parole.</small>
+            </div>
           </div>
         </div>
 
@@ -690,6 +697,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=2.3"></script>
+    <script src="app.js?v=2.4"></script>
   </body>
 </html>
