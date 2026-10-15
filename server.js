@@ -63,10 +63,91 @@ function checkCronAuth(req, url) {
   return false;
 }
 
+// -----------------------------------------------------------------------------
+// Authentication & Session Security
+// -----------------------------------------------------------------------------
+const AUTH_SALT = "AutoSponsor_Salt_v2_";
+
+function hashPassword(pwd) {
+  return crypto.createHash("sha256").update(AUTH_SALT + pwd).digest("hex");
+}
+
+async function getMasterPasswordHash() {
+  const envPwd = env.APP_PASSWORD || env.DASHBOARD_PASSWORD || "";
+  if (envPwd && envPwd.trim()) {
+    return hashPassword(envPwd.trim());
+  }
+  const dbHash = await db.getSetting("APP_PASSWORD_HASH");
+  return dbHash || null;
+}
+
+function createSessionToken(passwordHash) {
+  const issuedAt = Date.now();
+  const nonce = crypto.randomBytes(16).toString("hex");
+  const payload = `${issuedAt}:${nonce}`;
+  const sig = crypto.createHmac("sha256", passwordHash).update(payload).digest("hex");
+  return `${payload}:${sig}`;
+}
+
+function verifySessionToken(token, passwordHash) {
+  if (!token || !passwordHash) return false;
+  const parts = token.split(":");
+  if (parts.length !== 3) return false;
+  const [issuedAtStr, nonce, sig] = parts;
+  const issuedAt = Number(issuedAtStr);
+  if (!issuedAt || isNaN(issuedAt)) return false;
+
+  const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 giorni di persistenza
+  const now = Date.now();
+  if (now - issuedAt > MAX_AGE_MS) return false;
+  if (issuedAt > now + 60000) return false; // Clock skew protection
+
+  const expectedPayload = `${issuedAtStr}:${nonce}`;
+  const expectedSig = crypto.createHmac("sha256", passwordHash).update(expectedPayload).digest("hex");
+
+  try {
+    const sigBuf = Buffer.from(sig, "hex");
+    const expBuf = Buffer.from(expectedSig, "hex");
+    if (sigBuf.length !== expBuf.length) return false;
+    return crypto.timingSafeEqual(sigBuf, expBuf);
+  } catch {
+    return false;
+  }
+}
+
+function parseCookies(req) {
+  const list = {};
+  const rc = req.headers.cookie;
+  if (!rc) return list;
+  rc.split(";").forEach(cookie => {
+    const parts = cookie.split("=");
+    const name = parts.shift().trim();
+    if (name) list[name] = decodeURIComponent(parts.join("=").trim());
+  });
+  return list;
+}
+
+function getRequestSessionToken(req) {
+  const cookies = parseCookies(req);
+  if (cookies.autosponsor_session) return cookies.autosponsor_session;
+  const authHeader = req.headers.authorization || "";
+  if (authHeader.startsWith("Bearer ")) return authHeader.slice(7).trim();
+  if (req.headers["x-session-token"]) return req.headers["x-session-token"];
+  return null;
+}
+
+async function isSessionAuthenticated(req) {
+  const masterHash = await getMasterPasswordHash();
+  if (!masterHash) return false;
+  const token = getRequestSessionToken(req);
+  if (!token) return false;
+  return verifySessionToken(token, masterHash);
+}
+
 async function handleApi(req, res, url) {
   try {
     // -------------------------------------------------------------------------
-    // CRON ENDPOINT (for Render.com free tier via Cron-job.org or GitHub Actions)
+    // CRON ENDPOINT (External cron bypasses session with CRON_SECRET)
     // -------------------------------------------------------------------------
     if (url.pathname === "/api/cron/check-and-sponsor" && (req.method === "POST" || req.method === "GET")) {
       if (!checkCronAuth(req, url)) {
@@ -75,6 +156,130 @@ async function handleApi(req, res, url) {
       const forceAll = url.searchParams.get("force") === "true";
       const result = await engine.runAllDueAutomations("EXTERNAL_CRON", forceAll);
       return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result });
+    }
+
+    // -------------------------------------------------------------------------
+    // AUTHENTICATION & SESSION ENDPOINTS
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/auth/status" && req.method === "GET") {
+      const masterHash = await getMasterPasswordHash();
+      const setupRequired = !masterHash;
+      const authenticated = setupRequired ? false : await isSessionAuthenticated(req);
+      return json(res, 200, {
+        ok: true,
+        authenticated,
+        setupRequired
+      });
+    }
+
+    if (url.pathname === "/api/auth/setup" && req.method === "POST") {
+      const currentMaster = await getMasterPasswordHash();
+      if (currentMaster) {
+        return json(res, 400, { ok: false, error: "La master password è già stata configurata." });
+      }
+      const body = await readJsonBody(req);
+      const password = (body.password || "").trim();
+      if (!password || password.length < 4) {
+        return json(res, 400, { ok: false, error: "La password deve contenere almeno 4 caratteri." });
+      }
+      const newHash = hashPassword(password);
+      await db.setSetting("APP_PASSWORD_HASH", newHash);
+      const sessionToken = createSessionToken(newHash);
+      res.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "set-cookie": `autosponsor_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
+      });
+      res.end(JSON.stringify({ ok: true, message: "Password configurata con successo!" }));
+      return;
+    }
+
+    if (url.pathname === "/api/auth/login" && req.method === "POST") {
+      const masterHash = await getMasterPasswordHash();
+      if (!masterHash) {
+        return json(res, 400, { ok: false, error: "Configurazione password richiesta." });
+      }
+      const body = await readJsonBody(req);
+      const password = (body.password || "").trim();
+      const inputHash = hashPassword(password);
+
+      let isValid = false;
+      try {
+        isValid = crypto.timingSafeEqual(Buffer.from(inputHash, "hex"), Buffer.from(masterHash, "hex"));
+      } catch {
+        isValid = false;
+      }
+
+      if (!isValid) {
+        return json(res, 401, { ok: false, error: "Password errata. Riprova." });
+      }
+
+      const sessionToken = createSessionToken(masterHash);
+      res.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "set-cookie": `autosponsor_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
+      });
+      res.end(JSON.stringify({ ok: true, message: "Accesso autorizzato!" }));
+      return;
+    }
+
+    if (url.pathname === "/api/auth/logout" && req.method === "POST") {
+      res.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "set-cookie": "autosponsor_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+      });
+      res.end(JSON.stringify({ ok: true, message: "Disconnessione effettuata." }));
+      return;
+    }
+
+    if (url.pathname === "/api/auth/change-password" && req.method === "POST") {
+      if (!await isSessionAuthenticated(req)) {
+        return json(res, 401, { ok: false, error: "Non autorizzato" });
+      }
+      const body = await readJsonBody(req);
+      const currentPassword = (body.currentPassword || "").trim();
+      const newPassword = (body.newPassword || "").trim();
+
+      if (!newPassword || newPassword.length < 4) {
+        return json(res, 400, { ok: false, error: "La nuova password deve contenere almeno 4 caratteri." });
+      }
+
+      const masterHash = await getMasterPasswordHash();
+      const inputHash = hashPassword(currentPassword);
+      let isValid = false;
+      try {
+        isValid = crypto.timingSafeEqual(Buffer.from(inputHash, "hex"), Buffer.from(masterHash, "hex"));
+      } catch {
+        isValid = false;
+      }
+
+      if (!isValid) {
+        return json(res, 400, { ok: false, error: "La password attuale non è corretta." });
+      }
+
+      const newHash = hashPassword(newPassword);
+      await db.setSetting("APP_PASSWORD_HASH", newHash);
+      const sessionToken = createSessionToken(newHash);
+      res.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": "no-store",
+        "set-cookie": `autosponsor_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
+      });
+      res.end(JSON.stringify({ ok: true, message: "Password aggiornata con successo!" }));
+      return;
+    }
+
+    // -------------------------------------------------------------------------
+    // GATEKEEPER: All remaining /api/* endpoints require authentication
+    // -------------------------------------------------------------------------
+    if (!await isSessionAuthenticated(req)) {
+      return json(res, 401, {
+        ok: false,
+        error: "UNAUTHORIZED",
+        message: "Accesso non autorizzato. Inserisci la master password per visualizzare i clienti e il pannello."
+      });
     }
 
     // -------------------------------------------------------------------------
@@ -444,6 +649,11 @@ async function handleOAuth(req, res, url) {
   const redirectUri = env.META_LOGIN_REDIRECT_URI || `http://${req.headers.host}/auth/callback`;
 
   if (url.pathname === "/auth/facebook") {
+    if (!await isSessionAuthenticated(req)) {
+      res.writeHead(302, { Location: `/?login_error=${encodeURIComponent("Accesso non autorizzato. Sblocca prima il pannello con la password.")}` });
+      res.end();
+      return true;
+    }
     const oauthUrl = new URL(`https://www.facebook.com/${metaService.apiVersion}/dialog/oauth`);
     oauthUrl.searchParams.set("client_id", appId);
     oauthUrl.searchParams.set("redirect_uri", redirectUri);
@@ -455,6 +665,11 @@ async function handleOAuth(req, res, url) {
   }
 
   if (url.pathname === "/auth/callback") {
+    if (!await isSessionAuthenticated(req)) {
+      res.writeHead(302, { Location: `/?login_error=${encodeURIComponent("Accesso non autorizzato.")}` });
+      res.end();
+      return true;
+    }
     const code = url.searchParams.get("code");
     const error = url.searchParams.get("error_description") || url.searchParams.get("error");
     if (error || !code) {

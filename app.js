@@ -78,6 +78,10 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json", ...options.headers },
     ...options
   });
+  if (response.status === 401 && !path.startsWith("/api/auth/")) {
+    showAuthOverlay(false);
+    throw new Error("Accesso non autorizzato. Effettua il login.");
+  }
   const payload = await response.json();
   if (!response.ok || payload.error) {
     const errorMsg = payload.error?.message || payload.error || `Errore HTTP ${response.status}`;
@@ -220,7 +224,23 @@ const dom = {
   exportBtn: document.querySelector("#exportBtn"),
   exportDialog: document.querySelector("#exportDialog"),
   exportOutput: document.querySelector("#exportOutput"),
-  copyExportBtn: document.querySelector("#copyExportBtn")
+  copyExportBtn: document.querySelector("#copyExportBtn"),
+  // Auth DOM elements
+  authOverlay: document.getElementById("authOverlay"),
+  authSubtitle: document.getElementById("authSubtitle"),
+  authInfoBanner: document.getElementById("authInfoBanner"),
+  authForm: document.getElementById("authForm"),
+  authSetupGroup: document.getElementById("authSetupGroup"),
+  authNewPassword: document.getElementById("authNewPassword"),
+  toggleNewPwdBtn: document.getElementById("toggleNewPwdBtn"),
+  authLoginGroup: document.getElementById("authLoginGroup"),
+  authPassword: document.getElementById("authPassword"),
+  togglePwdBtn: document.getElementById("togglePwdBtn"),
+  authAlert: document.getElementById("authAlert"),
+  authSubmitBtn: document.getElementById("authSubmitBtn"),
+  authSpinner: document.getElementById("authSpinner"),
+  authSubmitBtnText: document.getElementById("authSubmitBtnText"),
+  logoutBtn: document.getElementById("logoutBtn")
 };
 
 // -----------------------------------------------------------------------------
@@ -1776,6 +1796,157 @@ function setupAccountManagement() {
 }
 
 // -----------------------------------------------------------------------------
+// Authentication & Protection Logic
+// -----------------------------------------------------------------------------
+let isAuthSetupMode = false;
+
+async function checkAuthStatus() {
+  try {
+    const res = await fetch("/api/auth/status", { cache: "no-store" });
+    const data = await res.json();
+    return data;
+  } catch (err) {
+    return { authenticated: false, setupRequired: false };
+  }
+}
+
+function showAuthOverlay(setupRequired = false) {
+  if (!dom.authOverlay) return;
+  isAuthSetupMode = setupRequired;
+  dom.authOverlay.style.display = "flex";
+
+  if (setupRequired) {
+    if (dom.authSetupGroup) dom.authSetupGroup.style.display = "block";
+    if (dom.authLoginGroup) dom.authLoginGroup.style.display = "none";
+    if (dom.authSubtitle) dom.authSubtitle.textContent = "Prima Configurazione • Crea la tua Master Password";
+    if (dom.authInfoBanner) dom.authInfoBanner.innerHTML = "⚡ <strong>Benvenuto!</strong> Crea una Master Password per proteggere l'accesso al pannello e nascondere tutti i clienti Meta da occhi indiscreti.";
+    if (dom.authSubmitBtnText) dom.authSubmitBtnText.textContent = "Salva Password e Accedi 🔐";
+    if (dom.authNewPassword) setTimeout(() => dom.authNewPassword.focus(), 100);
+  } else {
+    if (dom.authSetupGroup) dom.authSetupGroup.style.display = "none";
+    if (dom.authLoginGroup) dom.authLoginGroup.style.display = "block";
+    if (dom.authSubtitle) dom.authSubtitle.textContent = "Pannello Protetto • Meta Ads";
+    if (dom.authInfoBanner) dom.authInfoBanner.innerHTML = "🔒 Inserisci la <strong>Master Password</strong> per accedere al pannello e gestire le inserzioni dei clienti Meta.";
+    if (dom.authSubmitBtnText) dom.authSubmitBtnText.textContent = "Sblocca Accesso 🔓";
+    if (dom.authPassword) {
+      dom.authPassword.value = "";
+      setTimeout(() => dom.authPassword.focus(), 100);
+    }
+  }
+
+  if (dom.authAlert) {
+    dom.authAlert.style.display = "none";
+    dom.authAlert.textContent = "";
+  }
+}
+
+function hideAuthOverlay() {
+  if (!dom.authOverlay) return;
+  dom.authOverlay.style.display = "none";
+}
+
+function showAuthError(msg) {
+  if (!dom.authAlert) return;
+  dom.authAlert.textContent = msg;
+  dom.authAlert.style.display = "block";
+}
+
+function setAuthLoading(loading) {
+  if (dom.authSpinner) dom.authSpinner.style.display = loading ? "inline-block" : "none";
+  if (dom.authSubmitBtn) dom.authSubmitBtn.disabled = loading;
+}
+
+function setupAuth() {
+  if (!dom.authForm) return;
+
+  // Toggle password visibility
+  dom.togglePwdBtn?.addEventListener("click", () => {
+    if (!dom.authPassword) return;
+    const isPwd = dom.authPassword.type === "password";
+    dom.authPassword.type = isPwd ? "text" : "password";
+    dom.togglePwdBtn.textContent = isPwd ? "🙈" : "👁️";
+  });
+
+  dom.toggleNewPwdBtn?.addEventListener("click", () => {
+    if (!dom.authNewPassword) return;
+    const isPwd = dom.authNewPassword.type === "password";
+    dom.authNewPassword.type = isPwd ? "text" : "password";
+    dom.toggleNewPwdBtn.textContent = isPwd ? "🙈" : "👁️";
+  });
+
+  // Handle Login / Setup submit
+  dom.authForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (dom.authAlert) dom.authAlert.style.display = "none";
+
+    const password = isAuthSetupMode ? dom.authNewPassword?.value?.trim() : dom.authPassword?.value?.trim();
+    if (!password) {
+      showAuthError("Inserisci una password valida.");
+      return;
+    }
+
+    if (isAuthSetupMode && password.length < 4) {
+      showAuthError("La password deve contenere almeno 4 caratteri.");
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      const endpoint = isAuthSetupMode ? "/api/auth/setup" : "/api/auth/login";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password })
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.error) {
+        showAuthError(data.error || "Accesso fallito. Riprova.");
+        setAuthLoading(false);
+        return;
+      }
+
+      // Success!
+      hideAuthOverlay();
+      showBanner("✓ Accesso completato con successo. Dati clienti sbloccati.", "info");
+      await loadInitialData();
+    } catch (err) {
+      showAuthError(err.message || "Errore di connessione al server.");
+    } finally {
+      setAuthLoading(false);
+    }
+  });
+
+  // Logout button
+  dom.logoutBtn?.addEventListener("click", async () => {
+    if (!confirm("Vuoi disconnetterti e bloccare l'accesso al pannello su questo computer?")) return;
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {}
+    // Clear in-memory client data
+    state.allAdAccounts = [];
+    state.modalSources = { facebookPages: [], instagramAccounts: [] };
+    state.automations = [];
+    state.manual.publishedPosts = [];
+    renderAutomationsGrid();
+    renderManual();
+
+    showAuthOverlay(false);
+    showBanner("Sessione terminata. Il pannello è stato bloccato.", "info");
+  });
+}
+
+async function loadInitialData() {
+  await Promise.all([
+    loadAutomations(),
+    loadSystemStatus(),
+    loadLogs(),
+    loadManualConfig()
+  ]);
+}
+
+// -----------------------------------------------------------------------------
 // App Initialization
 // -----------------------------------------------------------------------------
 async function initApp() {
@@ -1785,6 +1956,15 @@ async function initApp() {
   setupGuideActions();
   setupManualListeners();
   setupAccountManagement();
+  setupAuth();
+
+  const authStatus = await checkAuthStatus();
+  if (authStatus.authenticated) {
+    hideAuthOverlay();
+    await loadInitialData();
+  } else {
+    showAuthOverlay(authStatus.setupRequired);
+  }
 
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get("login") === "ok") {
@@ -1794,13 +1974,6 @@ async function initApp() {
     showBanner("✕ Errore login: " + decodeURIComponent(urlParams.get("login_error")), "danger");
     window.history.replaceState({}, document.title, window.location.pathname);
   }
-
-  await Promise.all([
-    loadAutomations(),
-    loadSystemStatus(),
-    loadLogs(),
-    loadManualConfig()
-  ]);
 }
 
 window.addEventListener("DOMContentLoaded", initApp);

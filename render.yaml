@@ -16,3 +16,5 @@ services:
         generateValue: true
       - key: META_API_VERSION
         value: v21.0
+      - key: APP_PASSWORD
+        sync: false

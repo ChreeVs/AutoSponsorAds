@@ -8,9 +8,58 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=2.4">
+    <link rel="stylesheet" href="styles.css?v=2.5">
   </head>
   <body>
+    <!-- Login & Protection Overlay -->
+    <div class="auth-overlay" id="authOverlay">
+      <div class="auth-card">
+        <div class="auth-header">
+          <div class="auth-icon-badge">⚡</div>
+          <h2 class="auth-title">AutoSponsorAds</h2>
+          <p class="auth-subtitle" id="authSubtitle">Pannello Protetto • Meta Ads</p>
+        </div>
+
+        <div class="auth-body">
+          <div class="auth-info-banner" id="authInfoBanner">
+            🔒 Inserisci la <strong>Master Password</strong> per accedere al pannello e gestire le inserzioni dei clienti Meta.
+          </div>
+
+          <form id="authForm" autocomplete="on">
+            <!-- Setup mode: Nuova Password (primo avvio) -->
+            <div class="form-group" id="authSetupGroup" style="display: none;">
+              <label for="authNewPassword">Crea Nuova Master Password <span class="required">*</span></label>
+              <div class="password-wrapper">
+                <input id="authNewPassword" type="password" placeholder="Minimo 4 caratteri..." autocomplete="new-password">
+                <button type="button" class="btn-toggle-pwd" id="toggleNewPwdBtn" title="Mostra/Nascondi">👁️</button>
+              </div>
+              <small class="help-text">Questa password proteggerà l'accesso da qualsiasi computer o dispositivo.</small>
+            </div>
+
+            <!-- Login mode: Inserisci Password -->
+            <div class="form-group" id="authLoginGroup">
+              <label for="authPassword">Master Password <span class="required">*</span></label>
+              <div class="password-wrapper">
+                <input id="authPassword" type="password" placeholder="Inserisci la password..." autocomplete="current-password" required autofocus>
+                <button type="button" class="btn-toggle-pwd" id="togglePwdBtn" title="Mostra/Nascondi">👁️</button>
+              </div>
+            </div>
+
+            <div class="auth-alert error" id="authAlert" style="display: none;"></div>
+
+            <button class="btn btn-primary auth-submit-btn" id="authSubmitBtn" type="submit">
+              <span class="spinner" id="authSpinner" style="display: none;"></span>
+              <span id="authSubmitBtnText">Sblocca Accesso 🔓</span>
+            </button>
+          </form>
+        </div>
+
+        <div class="auth-footer">
+          <span>🛡️ Crittografia di sessione attiva • I tuoi clienti Meta sono protetti.</span>
+        </div>
+      </div>
+    </div>
+
     <!-- App Navigation Header -->
     <header class="main-nav" id="mainNav">
       <div class="nav-container">
@@ -45,6 +94,9 @@
           </button>
           <button class="btn btn-primary btn-sm" id="openNewAutoModalBtn" type="button">
             <span>+ Nuova Automazione</span>
+          </button>
+          <button class="btn btn-ghost btn-sm" id="logoutBtn" type="button" title="Disconnettiti e blocca l'accesso al pannello" style="color: var(--text-muted); border-color: var(--border-subtle);">
+            🔒 Esci
           </button>
         </div>
       </div>
@@ -450,6 +502,18 @@
               <li>L'applicazione configurerà automaticamente tutte le tabelle al primo avvio!</li>
             </ol>
           </div>
+
+          <!-- Sicurezza e Master Password Card -->
+          <div class="guide-card">
+            <div class="guide-card-icon">🔐</div>
+            <h3>Sicurezza & Master Password</h3>
+            <p>I tuoi account e clienti Meta sono rigorosamente protetti da Master Password:</p>
+            <ul class="guide-steps" style="list-style: disc; padding-left: 20px;">
+              <li>All'apertura da qualsiasi browser o computer, il pannello richiede la Master Password prima di mostrare gli account.</li>
+              <li>Puoi definire la variabile <code>APP_PASSWORD</code> nelle impostazioni di Render per forzarla da ambiente.</li>
+              <li>Usa il pulsante <strong>🔒 Esci</strong> in alto a destra quando ti allontani da un computer condiviso per bloccare subito la sessione.</li>
+            </ul>
+          </div>
         </div>
       </section>
     </main>
@@ -697,6 +761,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=2.4"></script>
+    <script src="app.js?v=2.5"></script>
   </body>
 </html>
