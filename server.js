@@ -61,7 +61,8 @@ function checkCronAuth(req, url) {
   if (!CRON_SECRET) return true;
   const authHeader = req.headers.authorization || "";
   if (authHeader === `Bearer ${CRON_SECRET}`) return true;
-  if (url.searchParams.get("secret") === CRON_SECRET) return true;
+  const secretParam = url.searchParams.get("secret") || url.searchParams.get("key") || url.searchParams.get("token") || "";
+  if (secretParam === CRON_SECRET) return true;
   return false;
 }
 
