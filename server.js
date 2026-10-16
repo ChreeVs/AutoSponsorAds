@@ -155,21 +155,36 @@ async function handleApi(req, res, url) {
       if (!checkCronAuth(req, url)) {
         return json(res, 401, { error: "Non autorizzato: token CRON_SECRET errato o mancante." });
       }
-      // External cron runs all active automations by default (forceAll = true unless explicitly force=false)
-      const forceAll = url.searchParams.get("force") !== "false";
-      const result = await engine.runAllDueAutomations("EXTERNAL_CRON", forceAll);
 
-      const verbose = url.searchParams.get("verbose") === "true";
-      if (verbose) {
-        return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result });
+      const forceAll = url.searchParams.get("force") !== "false";
+      const isSync = url.searchParams.get("sync") === "true" || url.searchParams.get("wait") === "true";
+
+      if (isSync) {
+        const result = await engine.runAllDueAutomations("EXTERNAL_CRON", forceAll);
+        const verbose = url.searchParams.get("verbose") === "true";
+        if (verbose) {
+          return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result });
+        }
+        return json(res, 200, {
+          ok: true,
+          executed: result.executedCount || 0,
+          active: result.totalActive || 0
+        });
       }
 
-      // Compact lightweight response (<60 bytes) so external crons (cron-job.org) never fail with "output too large"
-      return json(res, 200, {
+      // Default ASYNC execution: respond immediately (<10ms) so external crons (cron-job.org) NEVER timeout!
+      json(res, 200, {
         ok: true,
-        executed: result.executedCount || 0,
-        active: result.totalActive || 0
+        status: "RUNNING",
+        message: "Controllo automazioni avviato in background",
+        timestamp: new Date().toISOString()
       });
+
+      // Execute in background
+      engine.runAllDueAutomations("EXTERNAL_CRON", forceAll).catch(err => {
+        console.error("[CRON] Errore esecuzione asincrona:", err.message);
+      });
+      return;
     }
 
     // -------------------------------------------------------------------------
