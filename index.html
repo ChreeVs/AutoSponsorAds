@@ -76,6 +76,10 @@
             <span>⚡ Automazioni</span>
             <span class="tab-badge" id="badgeActiveCount">0</span>
           </button>
+          <button class="nav-tab" id="tabBtnTimeline" type="button" role="tab" aria-selected="false" data-tab="timelineView">
+            <span>📅 Timeline Flow</span>
+            <span class="tab-badge" id="badgeTimelineCount">0</span>
+          </button>
           <button class="nav-tab" id="tabBtnManual" type="button" role="tab" aria-selected="false" data-tab="manualView">
             <span>📦 Sponsor Manuale</span>
           </button>
@@ -166,6 +170,152 @@
             <h3>Nessuna automazione attiva</h3>
             <p>Crea la tua prima regola per monitorare una pagina Facebook o un profilo Instagram e sponsorizzare automaticamente ogni nuovo post pubblicato.</p>
             <button class="btn btn-primary" id="emptyCreateBtn" type="button">+ Crea Prima Automazione</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- VIEW 1B: TIMELINE FLOW & FORECAST PUBBLIE.IO                   -->
+      <!-- ============================================================== -->
+      <section class="app-view" id="timelineView" role="tabpanel" aria-labelledby="tabBtnTimeline" hidden>
+        <!-- View Header Strip -->
+        <div class="view-header-strip">
+          <div>
+            <h2>📅 Flow di Sponsorizzazione & Linea Temporale</h2>
+            <p>Previsione dei post futuri in uscita da <strong>Pubblie.io</strong> e selezione strategica dei contenuti da sponsorizzare su Meta Ads.</p>
+          </div>
+          <div class="header-actions">
+            <button class="btn btn-secondary btn-sm" id="openPubblieConfigBtn" type="button">
+              <span>⚙️ Configura Pubblie & Parametri Meta</span>
+            </button>
+            <button class="btn btn-primary btn-sm" id="refreshTimelineBtn" type="button">
+              <span class="spinner" id="timelineSpinner" style="display: none;"></span>
+              <span id="refreshTimelineBtnText">🔄 Sincronizza Previsioni</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- KPI Strip for Timeline -->
+        <div class="kpi-grid" style="margin-bottom: 24px;">
+          <div class="kpi-card">
+            <span class="kpi-label">🔮 Post Futuri Schedulati</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiTimelineFuture">0</strong>
+              <span class="kpi-sub">in uscita su Pubblie</span>
+            </div>
+          </div>
+          <div class="kpi-card" style="border-color: rgba(16, 185, 129, 0.35);">
+            <span class="kpi-label">🟢 Inclusi nel Flow</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiTimelineIncluded" style="color: var(--accent-emerald);">0</strong>
+              <span class="kpi-sub">verranno sponsorizzati</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">⛔ Esclusi dal Flow</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiTimelineExcluded" style="color: var(--text-muted);">0</strong>
+              <span class="kpi-sub">ignorati dall'engine</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">🚀 Già Sponsorizzati</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiTimelineSponsored" style="color: var(--accent-blue);">0</strong>
+              <span class="kpi-sub">inserzioni create</span>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <span class="kpi-label">🔗 Collegamento Pubblie</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiPubblieStatus" style="font-size: 1.05rem;">Verifica...</strong>
+              <span class="status-indicator" id="kpiPubblieIndicator"></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Banner Prompt if Pubblie is not configured -->
+        <div class="pubblie-connect-banner" id="pubblieConnectPrompt" style="display: none;">
+          <div class="pubblie-banner-content">
+            <div class="pubblie-banner-icon">🔮</div>
+            <div>
+              <h4 style="margin: 0 0 6px 0; font-size: 1.05rem; font-weight: 700;">Collega Pubblie.io per vedere la previsione dei post che usciranno</h4>
+              <p style="margin: 0; font-size: 0.88rem; color: var(--text-muted); line-height: 1.45;">
+                Inserisci la tua API Key di Pubblie e associa i parametri Meta (Account, Campagna, AdSet) <strong>una sola volta</strong>.
+                Potrai visualizzare tutti i post programmati in anticipo, decidere quali sponsorizzare e creare il tuo flow personalizzato.
+              </p>
+            </div>
+          </div>
+          <button class="btn btn-primary btn-sm" id="promptConnectPubblieBtn" type="button" style="white-space: nowrap;">
+            ⚡ Collega Pubblie Ora
+          </button>
+        </div>
+
+        <!-- Timeline Filters & Actions Bar -->
+        <div class="timeline-controls-bar">
+          <div class="timeline-filter-group">
+            <label class="filter-label" for="timelineFilterProject">Progetto:</label>
+            <select id="timelineFilterProject" class="filter-select">
+              <option value="">Tutti i Progetti</option>
+            </select>
+          </div>
+
+          <div class="timeline-filter-group">
+            <label class="filter-label" for="timelineFilterPlatform">Piattaforma:</label>
+            <select id="timelineFilterPlatform" class="filter-select">
+              <option value="">Tutte (IG + FB)</option>
+              <option value="Instagram">📸 Solo Instagram</option>
+              <option value="Facebook">📘 Solo Facebook</option>
+            </select>
+          </div>
+
+          <div class="timeline-filter-group">
+            <label class="filter-label" for="timelineFilterStatus">Stato Flow:</label>
+            <select id="timelineFilterStatus" class="filter-select">
+              <option value="">Tutti gli stati</option>
+              <option value="INCLUDED">🟢 Solo Inclusi nel Flow</option>
+              <option value="EXCLUDED">⛔ Solo Esclusi</option>
+              <option value="FUTURE">🔮 Solo Previsioni Future</option>
+              <option value="SPONSORED">🚀 Già Sponsorizzati</option>
+            </select>
+          </div>
+
+          <div class="timeline-filter-group">
+            <label class="filter-label" for="timelineFilterDays">Arco temporale:</label>
+            <select id="timelineFilterDays" class="filter-select">
+              <option value="7">Prossimi 7 giorni</option>
+              <option value="14">Prossimi 14 giorni</option>
+              <option value="30" selected>Prossimi 30 giorni</option>
+              <option value="60">Prossimi 60 giorni</option>
+            </select>
+          </div>
+
+          <div class="timeline-search-group">
+            <input id="timelineSearchInput" type="search" placeholder="Cerca nel testo dei post..." autocomplete="off">
+          </div>
+
+          <div class="timeline-bulk-actions">
+            <button class="btn btn-ghost btn-sm" id="timelineIncludeAllBtn" type="button" title="Includi tutti i post visibili nel flow">
+              ✓ Includi Tutti
+            </button>
+            <button class="btn btn-ghost btn-sm" id="timelineExcludeAllBtn" type="button" title="Escludi tutti i post visibili dal flow">
+              ✕ Escludi Tutti
+            </button>
+          </div>
+        </div>
+
+        <!-- Timeline Stream Container -->
+        <div class="timeline-container">
+          <div class="timeline-stream" id="timelineStream">
+            <!-- Chronological groups and post cards dynamically injected -->
+          </div>
+
+          <!-- Empty State -->
+          <div class="empty-state" id="timelineEmptyState" style="display: none;">
+            <div class="empty-icon">📅</div>
+            <h3>Nessun post trovato nella linea temporale</h3>
+            <p id="timelineEmptyText">Collega Pubblie.io o verifica i filtri impostati per visualizzare la previsione dei post programmati.</p>
+            <button class="btn btn-primary" id="timelineEmptyActionBtn" type="button">⚙️ Configura Pubblie & Parametri Meta</button>
           </div>
         </div>
       </section>
@@ -757,6 +907,174 @@
         <div class="dialog-actions" style="justify-content: space-between;">
           <button class="btn btn-ghost" id="restoreAllAccountsBtn" type="button">Ripristina Tutti</button>
           <button class="btn btn-primary" id="saveManagedAccountsBtn" type="button">Salva Modifiche</button>
+        </div>
+      </form>
+    </dialog>
+
+    <!-- Pubblie & Meta Mapping Configuration Dialog -->
+    <dialog class="app-dialog" id="pubblieConfigDialog" style="max-width: 860px;">
+      <form id="pubblieConfigForm" method="dialog">
+        <div class="dialog-header">
+          <div>
+            <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span>🔮</span> Pubblie.io & Mappatura Parametri Meta
+            </h2>
+            <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--text-dim);">
+              Collega la tua API Key di Pubblie e associa i parametri Meta (Account, Campagna, AdSet). <strong>Configurazione una tantum</strong>.
+            </p>
+          </div>
+          <button class="icon-button" id="closePubblieConfigBtn" value="close" type="button" aria-label="Chiudi">✕</button>
+        </div>
+
+        <!-- Sub Tabs in Modal -->
+        <div class="modal-subtabs">
+          <button type="button" class="modal-subtab active" id="subtabBtnPubblieKey" data-subtab="pubblieKeySection">
+            <span>🔑 1. Connessione API Pubblie</span>
+          </button>
+          <button type="button" class="modal-subtab" id="subtabBtnPubblieMapping" data-subtab="pubblieMappingSection">
+            <span>🎯 2. Associa Canali a Meta Ads</span>
+          </button>
+          <button type="button" class="modal-subtab" id="subtabBtnPubblieList" data-subtab="pubblieListSection">
+            <span>📋 3. Associazioni Salvate (<span id="pubblieMappingsCountBadge">0</span>)</span>
+          </button>
+        </div>
+
+        <div class="dialog-body" style="padding-top: 14px;">
+          <!-- SECTION 1: API KEY & CONNECTION -->
+          <div class="modal-subview active" id="pubblieKeySection">
+            <div class="info-callout" style="margin-bottom: 16px;">
+              💡 <strong>Dove trovare l'API Key:</strong> Accedi a <a href="https://pubblie.io" target="_blank" rel="noopener" style="color: var(--accent-emerald); font-weight: 600;">Pubblie.io</a>, vai nelle <em>Impostazioni del Profilo &gt; API Keys</em> e genera una nuova chiave personale (formato <code>pk_live_...</code>).
+            </div>
+
+            <div class="form-group">
+              <label for="pubblieApiKeyInput">Personal API Key Pubblie <span class="required">*</span></label>
+              <div class="password-wrapper">
+                <input id="pubblieApiKeyInput" type="password" placeholder="pk_live_xxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+                <button type="button" class="btn-toggle-pwd" id="togglePubblieKeyBtn" title="Mostra/Nascondi">👁️</button>
+              </div>
+              <small class="help-text">La chiave viene salvata in modo sicuro nel database dell'applicazione per le sincronizzazioni future.</small>
+            </div>
+
+            <div id="pubblieConnectionAlert" class="auth-alert" style="display: none; margin-bottom: 16px;"></div>
+
+            <div style="display: flex; gap: 10px; align-items: center; margin-top: 16px;">
+              <button class="btn btn-primary" id="testAndSavePubblieKeyBtn" type="button">
+                <span class="spinner" id="pubblieKeySpinner" style="display: none;"></span>
+                <span id="testAndSavePubblieKeyText">Verifica e Salva Chiave 🚀</span>
+              </button>
+              <button class="btn btn-ghost" id="disconnectPubblieBtn" type="button" style="display: none; color: var(--accent-rose);">
+                Scollega Account
+              </button>
+            </div>
+          </div>
+
+          <!-- SECTION 2: MAP PUBBLIE CHANNELS TO META (ONE-TIME SETUP) -->
+          <div class="modal-subview" id="pubblieMappingSection" style="display: none;">
+            <div class="info-callout" style="margin-bottom: 16px;">
+              🎯 <strong>Associazione Parametri:</strong> Scegli un Progetto e un Canale Pubblie (es. la tua Pagina Facebook o il Profilo Instagram) e indica su quale Account Meta, Campagna e Gruppo Inserzioni devono essere creati gli annunci quando i post vengono sponsorizzati nel Flow.
+            </div>
+
+            <!-- Shortcut: Auto-fill from an existing Automation -->
+            <div class="shortcut-box" style="margin-bottom: 16px; padding: 12px 14px; background: var(--bg-surface-elevated); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md);">
+              <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--accent-emerald); margin-bottom: 6px;">
+                ⚡ Scorciatoia Rapida: Copia parametri da un'automazione esistente
+              </label>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <select id="pubblieCopyFromAutoSelect" style="flex: 1; padding: 8px 10px; font-size: 0.85rem; background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-main);">
+                  <option value="">-- Seleziona un'automazione da copiare --</option>
+                </select>
+                <button type="button" class="btn btn-secondary btn-sm" id="pubblieApplyAutoShortcutBtn">Applica Dati</button>
+              </div>
+            </div>
+
+            <!-- Step 2A: Select Pubblie Project & Channel -->
+            <div class="form-row">
+              <div class="form-group">
+                <label for="mappingPubblieProjectSelect">Progetto Pubblie <span class="required">*</span></label>
+                <select id="mappingPubblieProjectSelect" required>
+                  <option value="">Caricamento progetti...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="mappingPubblieChannelSelect">Canale Pubblie (Pagina/Profilo) <span class="required">*</span></label>
+                <select id="mappingPubblieChannelSelect" required>
+                  <option value="">-- Seleziona prima un progetto --</option>
+                </select>
+                <small class="help-text">Canale social collegato su Pubblie</small>
+              </div>
+            </div>
+
+            <!-- Step 2B: Meta Parameters -->
+            <div class="form-row">
+              <div class="form-group">
+                <label for="mappingAdAccountSelect">Account Pubblicitario Meta <span class="required">*</span></label>
+                <select id="mappingAdAccountSelect" required>
+                  <option value="">Seleziona account...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="mappingCampaignSelect">Campagna Meta <span class="required">*</span></label>
+                <select id="mappingCampaignSelect" required>
+                  <option value="">Seleziona prima account...</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="mappingAdsetSelect">Gruppo Inserzioni Meta (AdSet) <span class="required">*</span></label>
+                <select id="mappingAdsetSelect" required>
+                  <option value="">Seleziona prima campagna...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="mappingRuleSelect">Regola Meta (Opzionale)</label>
+                <select id="mappingRuleSelect">
+                  <option value="">Nessuna regola</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row">
+              <div class="form-group">
+                <label for="mappingNamingPattern">Pattern Nome Inserzione</label>
+                <input id="mappingNamingPattern" type="text" value="ADV - {platform} - {post}">
+                <small class="help-text">Token: <code>{platform}</code>, <code>{post}</code>, <code>{date}</code>, <code>{id}</code></small>
+              </div>
+              <div class="form-group">
+                <label for="mappingAdStatusSelect">Stato Inserzione alla creazione</label>
+                <select id="mappingAdStatusSelect">
+                  <option value="PAUSED" selected>IN PAUSA (Consigliato per sicurezza)</option>
+                  <option value="ACTIVE">ATTIVO (Avvia subito la spesa)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Default Flow Inclusion Checkbox -->
+            <div style="margin-top: 8px; margin-bottom: 16px;">
+              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
+                <input type="checkbox" id="mappingAutoIncludeFlowCheckbox" checked style="width: 18px; height: 18px; accent-color: var(--accent-emerald);">
+                <span><strong>Includi automaticamente nel Flow:</strong> I nuovi post schedulati su questo canale saranno contrassegnati come <em>Inclusi per la sponsorizzazione</em> (potrai sempre escluderli singolarmente dalla Timeline).</span>
+              </label>
+            </div>
+
+            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
+              <button class="btn btn-primary" id="savePubblieMappingBtn" type="button">
+                <span>💾 Salva Associazione Canale</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- SECTION 3: SAVED MAPPINGS LIST -->
+          <div class="modal-subview" id="pubblieListSection" style="display: none;">
+            <div id="pubblieMappingsListContainer" style="display: flex; flex-direction: column; gap: 10px;">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+
+        <div class="dialog-actions">
+          <button class="btn btn-secondary" id="closePubblieConfigBottomBtn" type="button">Chiudi</button>
         </div>
       </form>
     </dialog>

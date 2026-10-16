@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const db = require("./db");
 const MetaService = require("./metaService");
 const AutomationEngine = require("./automationEngine");
+const PubblieService = require("./pubblieService");
 
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 4173);
@@ -13,6 +14,7 @@ const CRON_SECRET = env.CRON_SECRET || "";
 
 const metaService = new MetaService(env);
 const engine = new AutomationEngine(metaService);
+const pubblieService = new PubblieService(env);
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -642,6 +644,328 @@ async function handleApi(req, res, url) {
       return json(res, 200, await metaService.getInstagramMedia(instagramId, pageId, limit));
     }
 
+    // -------------------------------------------------------------------------
+    // PUBBLIE INTEGRATION ENDPOINTS
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/pubblie/status" && req.method === "GET") {
+      const key = pubblieService.getApiKey();
+      let connection = null;
+      if (key) {
+        connection = await pubblieService.checkConnection(key);
+      }
+      return json(res, 200, {
+        ok: true,
+        configured: Boolean(key),
+        keyPreview: key ? `${key.slice(0, 8)}...${key.slice(-4)}` : null,
+        connection
+      });
+    }
+
+    if (url.pathname === "/api/pubblie/save-key" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const cleanKey = (body.apiKey || "").trim();
+      if (!cleanKey) return json(res, 400, { error: "Chiave API Pubblie non fornita" });
+
+      const check = await pubblieService.checkConnection(cleanKey);
+      if (!check.ok) {
+        return json(res, 400, { error: `Verifica Pubblie fallita: ${check.error}` });
+      }
+
+      await db.setSetting("PUBBLIE_API_KEY", cleanKey);
+      pubblieService.setApiKey(cleanKey);
+      return json(res, 200, { ok: true, message: "Chiave API Pubblie salvata con successo!", user: check.user });
+    }
+
+    if (url.pathname === "/api/pubblie/disconnect" && req.method === "POST") {
+      await db.setSetting("PUBBLIE_API_KEY", "");
+      pubblieService.setApiKey("");
+      return json(res, 200, { ok: true, message: "Collegamento Pubblie rimosso." });
+    }
+
+    if (url.pathname === "/api/pubblie/projects" && req.method === "GET") {
+      const projects = await pubblieService.listProjects();
+      return json(res, 200, { ok: true, data: projects });
+    }
+
+    const pubblieChannelsMatch = url.pathname.match(/^\/api\/pubblie\/projects\/([^\/]+)\/channels$/);
+    if (pubblieChannelsMatch && req.method === "GET") {
+      const projectId = pubblieChannelsMatch[1];
+      const channels = await pubblieService.listProjectChannels(projectId);
+      return json(res, 200, { ok: true, data: channels });
+    }
+
+    if (url.pathname === "/api/pubblie/mappings" && req.method === "GET") {
+      const projectId = url.searchParams.get("projectId") || null;
+      const mappings = await db.getPubblieMappings(projectId);
+      return json(res, 200, { ok: true, data: mappings });
+    }
+
+    if (url.pathname === "/api/pubblie/mappings" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!body.project_id || !body.ad_account_id || !body.campaign_id || !body.adset_id) {
+        return json(res, 400, { error: "Campi obbligatori mancanti: project_id, ad_account_id, campaign_id, adset_id." });
+      }
+      const saved = await db.savePubblieMapping(body);
+      return json(res, 200, { ok: true, data: saved });
+    }
+
+    const pubblieMappingDeleteMatch = url.pathname.match(/^\/api\/pubblie\/mappings\/([^\/]+)$/);
+    if (pubblieMappingDeleteMatch && req.method === "DELETE") {
+      const id = pubblieMappingDeleteMatch[1];
+      await db.deletePubblieMapping(id);
+      return json(res, 200, { ok: true });
+    }
+
+    // -------------------------------------------------------------------------
+    // TIMELINE FLOW & FORECAST ENDPOINTS
+    // -------------------------------------------------------------------------
+    if (url.pathname === "/api/timeline/feed" && req.method === "GET") {
+      const filterProjectId = url.searchParams.get("projectId") || "";
+      const filterChannelId = url.searchParams.get("channelId") || "";
+      const filterPlatform = url.searchParams.get("platform") || "";
+      const filterStatus = url.searchParams.get("status") || "";
+      const daysAhead = Number(url.searchParams.get("days") || 30);
+
+      const mappings = await db.getPubblieMappings();
+      const decisions = await db.getTimelineDecisions();
+      const processedPosts = await db.getProcessedPosts(100);
+
+      const items = [];
+      const now = new Date();
+      const fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const toDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
+
+      if (pubblieService.getApiKey()) {
+        try {
+          let projectIds = [];
+          if (filterProjectId) {
+            projectIds = [filterProjectId];
+          } else if (mappings.length > 0) {
+            projectIds = [...new Set(mappings.map(m => m.project_id))];
+          } else {
+            const userProjects = await pubblieService.listProjects();
+            projectIds = userProjects.map(p => p.id).slice(0, 6);
+          }
+
+          for (const pId of projectIds) {
+            try {
+              const posts = await pubblieService.listProjectPosts(pId, { dateFrom: fromDate, dateTo: toDate });
+              const mappedChannels = mappings.filter(m => m.project_id === pId);
+
+              for (const p of posts) {
+                let matchingMapping = null;
+                if (p.channelIds && p.channelIds.length) {
+                  matchingMapping = mappedChannels.find(m => p.channelIds.includes(m.channel_id));
+                }
+                if (!matchingMapping && mappedChannels.length) {
+                  matchingMapping = mappedChannels[0];
+                }
+
+                let platform = "Instagram";
+                if (matchingMapping) {
+                  platform = matchingMapping.channel_provider?.toLowerCase().includes("face") ? "Facebook" : "Instagram";
+                }
+
+                const postDate = p.scheduleDateTime || p.publishedAt || now.toISOString();
+                const isFuture = new Date(postDate).getTime() > now.getTime();
+
+                let decision = decisions[p.id];
+                let flowStatus = decision?.sponsorship_status;
+                if (!flowStatus) {
+                  flowStatus = matchingMapping ? (matchingMapping.auto_sponsor_on_publish ? "INCLUDED" : "EXCLUDED") : "INCLUDED";
+                }
+
+                const isAlreadyProcessed = processedPosts.find(pp => pp.post_id === p.id);
+                if (isAlreadyProcessed || flowStatus === "SPONSORED") {
+                  flowStatus = "SPONSORED";
+                }
+
+                items.push({
+                  id: `pub_${p.id}`,
+                  rawId: p.id,
+                  source: "pubblie",
+                  platform,
+                  projectId: pId,
+                  projectName: matchingMapping?.project_name || `Progetto ${pId}`,
+                  channelIds: p.channelIds,
+                  channelName: matchingMapping?.channel_name || "",
+                  text: p.text || "",
+                  images: p.images || [],
+                  videoIds: p.videoIds || [],
+                  link: p.link || "",
+                  scheduledAt: p.scheduleDateTime,
+                  publishedAt: p.publishedAt,
+                  effectiveDate: postDate,
+                  isFuture,
+                  pubblieStatus: p.status,
+                  flowStatus,
+                  adId: isAlreadyProcessed?.ad_id || decision?.ad_id || "",
+                  mapping: matchingMapping || null,
+                  customTarget: decision?.custom_target || null
+                });
+              }
+            } catch (pErr) {
+              console.warn(`[Pubblie] Errore caricamento post per progetto ${pId}:`, pErr.message);
+            }
+          }
+        } catch (pubErr) {
+          console.warn("[Pubblie] Errore fetch post Pubblie:", pubErr.message);
+        }
+      }
+
+      for (const pp of processedPosts) {
+        if (!items.some(it => it.rawId === pp.post_id)) {
+          items.push({
+            id: `meta_${pp.post_id}`,
+            rawId: pp.post_id,
+            source: "meta",
+            platform: pp.platform || "Instagram",
+            projectId: "",
+            projectName: "Meta Ads",
+            channelIds: [pp.source_id],
+            channelName: pp.source_id,
+            text: pp.post_message || pp.ad_name || "",
+            images: [],
+            videoIds: [],
+            link: pp.post_permalink || "",
+            scheduledAt: null,
+            publishedAt: pp.created_at,
+            effectiveDate: pp.created_at,
+            isFuture: false,
+            pubblieStatus: "PUBLISHED",
+            flowStatus: "SPONSORED",
+            adId: pp.ad_id,
+            mapping: null,
+            customTarget: null
+          });
+        }
+      }
+
+      // Sort timeline strictly chronologically (upcoming earliest to latest)
+      items.sort((a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime());
+
+      let filtered = items;
+      if (filterPlatform) {
+        filtered = filtered.filter(i => i.platform.toLowerCase() === filterPlatform.toLowerCase());
+      }
+      if (filterChannelId) {
+        filtered = filtered.filter(i => (i.channelIds || []).includes(filterChannelId) || i.channelName === filterChannelId);
+      }
+      if (filterStatus) {
+        if (filterStatus === "FUTURE") {
+          filtered = filtered.filter(i => i.isFuture);
+        } else {
+          filtered = filtered.filter(i => i.flowStatus === filterStatus);
+        }
+      }
+
+      const stats = {
+        total: items.length,
+        upcomingCount: items.filter(i => i.isFuture).length,
+        includedCount: items.filter(i => i.flowStatus === "INCLUDED").length,
+        excludedCount: items.filter(i => i.flowStatus === "EXCLUDED").length,
+        sponsoredCount: items.filter(i => i.flowStatus === "SPONSORED").length,
+        mappingsCount: mappings.length
+      };
+
+      return json(res, 200, {
+        ok: true,
+        data: filtered,
+        stats,
+        mappings
+      });
+    }
+
+    if (url.pathname === "/api/timeline/decision" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!body.postId || !body.status) {
+        return json(res, 400, { error: "postId e status ('INCLUDED' | 'EXCLUDED') sono obbligatori." });
+      }
+
+      const saved = await db.saveTimelineDecision(body.postId, {
+        sponsorship_status: body.status,
+        source: body.source || "pubblie",
+        project_id: body.projectId || "",
+        channel_id: body.channelId || "",
+        custom_target: body.customTarget || null
+      });
+
+      return json(res, 200, { ok: true, data: saved });
+    }
+
+    if (url.pathname === "/api/timeline/bulk-decision" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!Array.isArray(body.postIds) || !body.status) {
+        return json(res, 400, { error: "postIds (array) e status sono obbligatori." });
+      }
+
+      for (const id of body.postIds) {
+        await db.saveTimelineDecision(id, { sponsorship_status: body.status });
+      }
+
+      return json(res, 200, { ok: true, count: body.postIds.length });
+    }
+
+    if (url.pathname === "/api/timeline/sponsor-now" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      if (!body.adAccountId || !body.adsetId || !body.postId) {
+        return json(res, 400, { error: "adAccountId, adsetId e postId sono obbligatori." });
+      }
+
+      const adName = body.adName || `ADV - ${body.platform || "Post"} - ${String(body.postId).slice(-6)}`;
+      const creativeParams = {
+        name: adName,
+        status: "ACTIVE"
+      };
+
+      if (body.platform === "Facebook") {
+        creativeParams.object_story_id = body.sourcePostId || body.postId;
+      } else {
+        const page = metaService.pageForInstagramId(body.instagramAccountId);
+        creativeParams.object_id = page?.id || body.pageId;
+        creativeParams.instagram_user_id = body.instagramAccountId;
+        creativeParams.source_instagram_media_id = body.sourcePostId || body.postId;
+      }
+
+      const creative = await metaService.graphPost(`/${body.adAccountId}/adcreatives`, creativeParams);
+      const ad = await metaService.graphPost(`/${body.adAccountId}/ads`, {
+        name: adName,
+        adset_id: body.adsetId,
+        creative: { creative_id: creative.id },
+        status: body.adStatus || "PAUSED"
+      });
+
+      if (body.ruleId) {
+        try {
+          await metaService.applyRuleToCreatedAds(body.adAccountId, body.ruleId, [ad.id]);
+        } catch (rErr) {
+          console.warn("[Timeline Sponsor] Errore applicazione regola:", rErr.message);
+        }
+      }
+
+      await db.recordProcessedPost({
+        automation_id: body.automationId || null,
+        platform: body.platform || "Instagram",
+        source_id: body.platform === "Facebook" ? body.pageId : body.instagramAccountId,
+        post_id: body.postId,
+        post_permalink: body.permalink || "",
+        post_message: adName,
+        ad_id: ad.id,
+        creative_id: creative.id,
+        ad_name: adName,
+        rule_applied: Boolean(body.ruleId),
+        status: "SUCCESS"
+      });
+
+      await db.saveTimelineDecision(body.postId, {
+        sponsorship_status: "SPONSORED",
+        ad_id: ad.id,
+        notes: "Sponsorizzato manualmente dalla Timeline"
+      });
+
+      return json(res, 200, { ok: true, adId: ad.id, creativeId: creative.id });
+    }
+
     return json(res, 404, { error: "Endpoint non trovato" });
   } catch (error) {
     console.error("[API Error]", error);
@@ -792,6 +1116,15 @@ async function start() {
       if (savedToken) {
         metaService.updateConfig({ META_ACCESS_TOKEN: savedToken });
         console.log("[Auth] Token Meta caricato dal database persistente");
+      }
+    }
+
+    // Check Pubblie API Key from DB
+    if (!pubblieService.getApiKey()) {
+      const savedPubblieKey = await db.getSetting("PUBBLIE_API_KEY");
+      if (savedPubblieKey) {
+        pubblieService.setApiKey(savedPubblieKey);
+        console.log("[Pubblie] Chiave API Pubblie caricata dal database persistente");
       }
     }
 

@@ -108,8 +108,17 @@ class AutomationEngine {
           continue;
         }
 
-        // 3. Check keywords/hashtags filter (inclusion)
-        if (!this.matchesKeywords(post.message, automation.filter_keywords)) {
+        // 2b. Check Timeline Flow Decision (User curated flow)
+        const timelineDecision = await db.getTimelineDecision(post.id);
+        if (timelineDecision && timelineDecision.sponsorship_status === "EXCLUDED") {
+          console.log(`[ENGINE] Post ${post.id} escluso dalla sponsorizzazione per decisione nella Linea Temporale (Flow).`);
+          report.skippedCount++;
+          continue;
+        }
+
+        // 3. Check keywords/hashtags filter (inclusion) - bypassed if explicitly marked INCLUDED on timeline
+        const isExplicitlyIncluded = timelineDecision && timelineDecision.sponsorship_status === "INCLUDED";
+        if (!isExplicitlyIncluded && !this.matchesKeywords(post.message, automation.filter_keywords)) {
           report.skippedCount++;
           continue;
         }
@@ -219,6 +228,19 @@ class AutomationEngine {
             rule_applied: ruleApplied,
             status: "SUCCESS"
           });
+
+          // Sync timeline decision state
+          try {
+            await db.saveTimelineDecision(post.id, {
+              source: automation.platform === "Facebook" ? "facebook" : "instagram",
+              channel_id: automation.source_id,
+              sponsorship_status: "SPONSORED",
+              ad_id: ad.id,
+              notes: `Sponsorizzato con successo da automazione "${automation.name}"`
+            });
+          } catch (syncErr) {
+            console.warn("[ENGINE] Sync timeline decision error:", syncErr.message);
+          }
 
           report.adsCreated++;
           report.createdAds.push({

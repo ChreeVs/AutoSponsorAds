@@ -13,7 +13,9 @@ let jsonState = {
   automations: [],
   processed_posts: [],
   execution_logs: [],
-  app_settings: {}
+  app_settings: {},
+  pubblie_mappings: [],
+  timeline_decisions: {}
 };
 
 function loadJsonStore() {
@@ -151,6 +153,41 @@ async function setupPostgresSchema() {
       key VARCHAR(128) PRIMARY KEY,
       value TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS pubblie_mappings (
+      id VARCHAR(128) PRIMARY KEY,
+      project_id VARCHAR(128) NOT NULL,
+      project_name VARCHAR(255) DEFAULT '',
+      channel_id VARCHAR(128) NOT NULL,
+      channel_name VARCHAR(255) DEFAULT '',
+      channel_provider VARCHAR(64) DEFAULT '',
+      ad_account_id VARCHAR(128) NOT NULL,
+      ad_account_name VARCHAR(255) DEFAULT '',
+      campaign_id VARCHAR(128) NOT NULL,
+      campaign_name VARCHAR(255) DEFAULT '',
+      adset_id VARCHAR(128) NOT NULL,
+      adset_name VARCHAR(255) DEFAULT '',
+      rule_id VARCHAR(128) DEFAULT '',
+      rule_name VARCHAR(255) DEFAULT '',
+      automation_id VARCHAR(64) DEFAULT '',
+      ad_name_pattern VARCHAR(255) DEFAULT 'ADV - {platform} - {post}',
+      ad_status VARCHAR(32) DEFAULT 'PAUSED',
+      auto_sponsor_on_publish BOOLEAN DEFAULT true,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS timeline_decisions (
+      post_id VARCHAR(128) PRIMARY KEY,
+      source VARCHAR(32) DEFAULT 'pubblie',
+      project_id VARCHAR(128) DEFAULT '',
+      channel_id VARCHAR(128) DEFAULT '',
+      sponsorship_status VARCHAR(32) DEFAULT 'INCLUDED',
+      custom_target TEXT DEFAULT '',
+      ad_id VARCHAR(128) DEFAULT '',
+      notes TEXT DEFAULT '',
+      updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 }
 
@@ -219,6 +256,41 @@ function setupSqliteSchema() {
     CREATE TABLE IF NOT EXISTS app_settings (
       key TEXT PRIMARY KEY,
       value TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS pubblie_mappings (
+      id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      project_name TEXT DEFAULT '',
+      channel_id TEXT NOT NULL,
+      channel_name TEXT DEFAULT '',
+      channel_provider TEXT DEFAULT '',
+      ad_account_id TEXT NOT NULL,
+      ad_account_name TEXT DEFAULT '',
+      campaign_id TEXT NOT NULL,
+      campaign_name TEXT DEFAULT '',
+      adset_id TEXT NOT NULL,
+      adset_name TEXT DEFAULT '',
+      rule_id TEXT DEFAULT '',
+      rule_name TEXT DEFAULT '',
+      automation_id TEXT DEFAULT '',
+      ad_name_pattern TEXT DEFAULT 'ADV - {platform} - {post}',
+      ad_status TEXT DEFAULT 'PAUSED',
+      auto_sponsor_on_publish INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS timeline_decisions (
+      post_id TEXT PRIMARY KEY,
+      source TEXT DEFAULT 'pubblie',
+      project_id TEXT DEFAULT '',
+      channel_id TEXT DEFAULT '',
+      sponsorship_status TEXT DEFAULT 'INCLUDED',
+      custom_target TEXT DEFAULT '',
+      ad_id TEXT DEFAULT '',
+      notes TEXT DEFAULT '',
+      updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
 
@@ -578,6 +650,321 @@ async function setSetting(key, value) {
   saveJsonStore();
 }
 
+// -----------------------------------------------------------------------------
+// Pubblie & Meta Mappings CRUD
+// -----------------------------------------------------------------------------
+
+async function getPubblieMappings(projectId = null) {
+  if (dbType === "postgres") {
+    let query = "SELECT * FROM pubblie_mappings";
+    const params = [];
+    if (projectId) {
+      query += " WHERE project_id = $1";
+      params.push(projectId);
+    }
+    query += " ORDER BY created_at DESC";
+    const res = await pgPool.query(query, params);
+    return res.rows.map(r => ({ ...r, auto_sponsor_on_publish: Boolean(r.auto_sponsor_on_publish) }));
+  }
+  if (dbType === "sqlite") {
+    let query = "SELECT * FROM pubblie_mappings";
+    const params = [];
+    if (projectId) {
+      query += " WHERE project_id = ?";
+      params.push(projectId);
+    }
+    query += " ORDER BY created_at DESC";
+    const stmt = sqliteDb.prepare(query);
+    const rows = params.length ? stmt.all(...params) : stmt.all();
+    return rows.map(r => ({ ...r, auto_sponsor_on_publish: Boolean(r.auto_sponsor_on_publish) }));
+  }
+  let list = Array.isArray(jsonState.pubblie_mappings) ? jsonState.pubblie_mappings : [];
+  if (projectId) {
+    list = list.filter(m => m.project_id === projectId);
+  }
+  return [...list].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+}
+
+async function getPubblieMapping(id) {
+  if (dbType === "postgres") {
+    const res = await pgPool.query("SELECT * FROM pubblie_mappings WHERE id = $1", [id]);
+    const r = res.rows[0];
+    return r ? { ...r, auto_sponsor_on_publish: Boolean(r.auto_sponsor_on_publish) } : null;
+  }
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT * FROM pubblie_mappings WHERE id = ?");
+    const r = stmt.get(id);
+    return r ? { ...r, auto_sponsor_on_publish: Boolean(r.auto_sponsor_on_publish) } : null;
+  }
+  const list = Array.isArray(jsonState.pubblie_mappings) ? jsonState.pubblie_mappings : [];
+  return list.find(m => m.id === id) || null;
+}
+
+async function findPubblieMapping(channelId, projectId = null) {
+  if (dbType === "postgres") {
+    if (channelId) {
+      const res = await pgPool.query("SELECT * FROM pubblie_mappings WHERE channel_id = $1 LIMIT 1", [channelId]);
+      if (res.rows[0]) return { ...res.rows[0], auto_sponsor_on_publish: Boolean(res.rows[0].auto_sponsor_on_publish) };
+    }
+    if (projectId) {
+      const res = await pgPool.query("SELECT * FROM pubblie_mappings WHERE project_id = $1 LIMIT 1", [projectId]);
+      if (res.rows[0]) return { ...res.rows[0], auto_sponsor_on_publish: Boolean(res.rows[0].auto_sponsor_on_publish) };
+    }
+    return null;
+  }
+  if (dbType === "sqlite") {
+    if (channelId) {
+      const stmt = sqliteDb.prepare("SELECT * FROM pubblie_mappings WHERE channel_id = ? LIMIT 1");
+      const r = stmt.get(channelId);
+      if (r) return { ...r, auto_sponsor_on_publish: Boolean(r.auto_sponsor_on_publish) };
+    }
+    if (projectId) {
+      const stmt = sqliteDb.prepare("SELECT * FROM pubblie_mappings WHERE project_id = ? LIMIT 1");
+      const r = stmt.get(projectId);
+      if (r) return { ...r, auto_sponsor_on_publish: Boolean(r.auto_sponsor_on_publish) };
+    }
+    return null;
+  }
+  const list = Array.isArray(jsonState.pubblie_mappings) ? jsonState.pubblie_mappings : [];
+  if (channelId) {
+    const found = list.find(m => m.channel_id === channelId);
+    if (found) return found;
+  }
+  if (projectId) {
+    return list.find(m => m.project_id === projectId) || null;
+  }
+  return null;
+}
+
+async function savePubblieMapping(item) {
+  const now = new Date().toISOString();
+  const id = item.id || `pubmap_${item.project_id}_${item.channel_id || "all"}`;
+  const record = {
+    id,
+    project_id: item.project_id,
+    project_name: item.project_name || "",
+    channel_id: item.channel_id || "",
+    channel_name: item.channel_name || "",
+    channel_provider: item.channel_provider || "",
+    ad_account_id: item.ad_account_id,
+    ad_account_name: item.ad_account_name || "",
+    campaign_id: item.campaign_id,
+    campaign_name: item.campaign_name || "",
+    adset_id: item.adset_id,
+    adset_name: item.adset_name || "",
+    rule_id: item.rule_id || "",
+    rule_name: item.rule_name || "",
+    automation_id: item.automation_id || "",
+    ad_name_pattern: item.ad_name_pattern || "ADV - {platform} - {post}",
+    ad_status: item.ad_status || "PAUSED",
+    auto_sponsor_on_publish: item.auto_sponsor_on_publish ?? true,
+    created_at: item.created_at || now,
+    updated_at: now
+  };
+
+  if (dbType === "postgres") {
+    await pgPool.query(`
+      INSERT INTO pubblie_mappings (
+        id, project_id, project_name, channel_id, channel_name, channel_provider,
+        ad_account_id, ad_account_name, campaign_id, campaign_name, adset_id, adset_name,
+        rule_id, rule_name, automation_id, ad_name_pattern, ad_status, auto_sponsor_on_publish,
+        created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+      ON CONFLICT (id) DO UPDATE SET
+        project_name = EXCLUDED.project_name,
+        channel_name = EXCLUDED.channel_name,
+        channel_provider = EXCLUDED.channel_provider,
+        ad_account_id = EXCLUDED.ad_account_id,
+        ad_account_name = EXCLUDED.ad_account_name,
+        campaign_id = EXCLUDED.campaign_id,
+        campaign_name = EXCLUDED.campaign_name,
+        adset_id = EXCLUDED.adset_id,
+        adset_name = EXCLUDED.adset_name,
+        rule_id = EXCLUDED.rule_id,
+        rule_name = EXCLUDED.rule_name,
+        automation_id = EXCLUDED.automation_id,
+        ad_name_pattern = EXCLUDED.ad_name_pattern,
+        ad_status = EXCLUDED.ad_status,
+        auto_sponsor_on_publish = EXCLUDED.auto_sponsor_on_publish,
+        updated_at = EXCLUDED.updated_at
+    `, [
+      record.id, record.project_id, record.project_name, record.channel_id, record.channel_name, record.channel_provider,
+      record.ad_account_id, record.ad_account_name, record.campaign_id, record.campaign_name, record.adset_id, record.adset_name,
+      record.rule_id, record.rule_name, record.automation_id, record.ad_name_pattern, record.ad_status, record.auto_sponsor_on_publish,
+      record.created_at, record.updated_at
+    ]);
+    return record;
+  }
+
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare(`
+      INSERT INTO pubblie_mappings (
+        id, project_id, project_name, channel_id, channel_name, channel_provider,
+        ad_account_id, ad_account_name, campaign_id, campaign_name, adset_id, adset_name,
+        rule_id, rule_name, automation_id, ad_name_pattern, ad_status, auto_sponsor_on_publish,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (id) DO UPDATE SET
+        project_name = excluded.project_name,
+        channel_name = excluded.channel_name,
+        channel_provider = excluded.channel_provider,
+        ad_account_id = excluded.ad_account_id,
+        ad_account_name = excluded.ad_account_name,
+        campaign_id = excluded.campaign_id,
+        campaign_name = excluded.campaign_name,
+        adset_id = excluded.adset_id,
+        adset_name = excluded.adset_name,
+        rule_id = excluded.rule_id,
+        rule_name = excluded.rule_name,
+        automation_id = excluded.automation_id,
+        ad_name_pattern = excluded.ad_name_pattern,
+        ad_status = excluded.ad_status,
+        auto_sponsor_on_publish = excluded.auto_sponsor_on_publish,
+        updated_at = excluded.updated_at
+    `);
+    stmt.run(
+      record.id, record.project_id, record.project_name, record.channel_id, record.channel_name, record.channel_provider,
+      record.ad_account_id, record.ad_account_name, record.campaign_id, record.campaign_name, record.adset_id, record.adset_name,
+      record.rule_id, record.rule_name, record.automation_id, record.ad_name_pattern, record.ad_status, record.auto_sponsor_on_publish ? 1 : 0,
+      record.created_at, record.updated_at
+    );
+    return record;
+  }
+
+  if (!Array.isArray(jsonState.pubblie_mappings)) jsonState.pubblie_mappings = [];
+  const idx = jsonState.pubblie_mappings.findIndex(m => m.id === record.id);
+  if (idx >= 0) {
+    jsonState.pubblie_mappings[idx] = record;
+  } else {
+    jsonState.pubblie_mappings.push(record);
+  }
+  saveJsonStore();
+  return record;
+}
+
+async function deletePubblieMapping(id) {
+  if (dbType === "postgres") {
+    await pgPool.query("DELETE FROM pubblie_mappings WHERE id = $1", [id]);
+    return;
+  }
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("DELETE FROM pubblie_mappings WHERE id = ?");
+    stmt.run(id);
+    return;
+  }
+  if (Array.isArray(jsonState.pubblie_mappings)) {
+    jsonState.pubblie_mappings = jsonState.pubblie_mappings.filter(m => m.id !== id);
+    saveJsonStore();
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Timeline Decisions CRUD (Included vs Excluded from Sponsorship Flow)
+// -----------------------------------------------------------------------------
+
+async function getTimelineDecisions() {
+  if (dbType === "postgres") {
+    const res = await pgPool.query("SELECT * FROM timeline_decisions");
+    const map = {};
+    for (const r of res.rows) {
+      let customTarget = {};
+      try { customTarget = r.custom_target ? JSON.parse(r.custom_target) : {}; } catch {}
+      map[r.post_id] = { ...r, custom_target: customTarget };
+    }
+    return map;
+  }
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT * FROM timeline_decisions");
+    const rows = stmt.all();
+    const map = {};
+    for (const r of rows) {
+      let customTarget = {};
+      try { customTarget = r.custom_target ? JSON.parse(r.custom_target) : {}; } catch {}
+      map[r.post_id] = { ...r, custom_target: customTarget };
+    }
+    return map;
+  }
+  return jsonState.timeline_decisions || {};
+}
+
+async function getTimelineDecision(postId) {
+  if (!postId) return null;
+  if (dbType === "postgres") {
+    const res = await pgPool.query("SELECT * FROM timeline_decisions WHERE post_id = $1", [postId]);
+    const r = res.rows[0];
+    if (!r) return null;
+    let customTarget = {};
+    try { customTarget = r.custom_target ? JSON.parse(r.custom_target) : {}; } catch {}
+    return { ...r, custom_target: customTarget };
+  }
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare("SELECT * FROM timeline_decisions WHERE post_id = ?");
+    const r = stmt.get(postId);
+    if (!r) return null;
+    let customTarget = {};
+    try { customTarget = r.custom_target ? JSON.parse(r.custom_target) : {}; } catch {}
+    return { ...r, custom_target: customTarget };
+  }
+  return jsonState.timeline_decisions?.[postId] || null;
+}
+
+async function saveTimelineDecision(postId, data = {}) {
+  const now = new Date().toISOString();
+  const status = data.sponsorship_status || data.status || "INCLUDED";
+  const source = data.source || "pubblie";
+  const projectId = data.project_id || "";
+  const channelId = data.channel_id || "";
+  const customTargetStr = typeof data.custom_target === "object" ? JSON.stringify(data.custom_target) : (data.custom_target || "");
+  const adId = data.ad_id || "";
+  const notes = data.notes || "";
+
+  if (dbType === "postgres") {
+    await pgPool.query(`
+      INSERT INTO timeline_decisions (
+        post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      ON CONFLICT (post_id) DO UPDATE SET
+        sponsorship_status = EXCLUDED.sponsorship_status,
+        custom_target = CASE WHEN EXCLUDED.custom_target <> '' THEN EXCLUDED.custom_target ELSE timeline_decisions.custom_target END,
+        ad_id = CASE WHEN EXCLUDED.ad_id <> '' THEN EXCLUDED.ad_id ELSE timeline_decisions.ad_id END,
+        notes = EXCLUDED.notes,
+        updated_at = EXCLUDED.updated_at
+    `, [postId, source, projectId, channelId, status, customTargetStr, adId, notes, now]);
+    return { post_id: postId, sponsorship_status: status, updated_at: now };
+  }
+
+  if (dbType === "sqlite") {
+    const stmt = sqliteDb.prepare(`
+      INSERT INTO timeline_decisions (
+        post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT (post_id) DO UPDATE SET
+        sponsorship_status = excluded.sponsorship_status,
+        custom_target = CASE WHEN excluded.custom_target <> '' THEN excluded.custom_target ELSE timeline_decisions.custom_target END,
+        ad_id = CASE WHEN excluded.ad_id <> '' THEN excluded.ad_id ELSE timeline_decisions.ad_id END,
+        notes = excluded.notes,
+        updated_at = excluded.updated_at
+    `);
+    stmt.run(postId, source, projectId, channelId, status, customTargetStr, adId, notes, now);
+    return { post_id: postId, sponsorship_status: status, updated_at: now };
+  }
+
+  if (!jsonState.timeline_decisions) jsonState.timeline_decisions = {};
+  jsonState.timeline_decisions[postId] = {
+    post_id: postId,
+    source,
+    project_id: projectId,
+    channel_id: channelId,
+    sponsorship_status: status,
+    custom_target: typeof data.custom_target === "object" ? data.custom_target : {},
+    ad_id: adId,
+    notes,
+    updated_at: now
+  };
+  saveJsonStore();
+  return jsonState.timeline_decisions[postId];
+}
+
 function getDbType() {
   return dbType;
 }
@@ -597,5 +984,14 @@ module.exports = {
   recordLog,
   getLogs,
   getSetting,
-  setSetting
+  setSetting,
+  getPubblieMappings,
+  getPubblieMapping,
+  findPubblieMapping,
+  savePubblieMapping,
+  deletePubblieMapping,
+  getTimelineDecisions,
+  getTimelineDecision,
+  saveTimelineDecision
 };
+

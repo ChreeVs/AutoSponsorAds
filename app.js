@@ -65,6 +65,26 @@ const state = {
       creating: false
     },
     results: []
+  },
+
+  // Timeline Flow & Pubblie Integration State
+  timeline: {
+    items: [],
+    stats: { total: 0, upcomingCount: 0, includedCount: 0, excludedCount: 0, sponsoredCount: 0 },
+    pubblieConfigured: false,
+    pubblieKey: "",
+    pubblieUser: null,
+    projects: [],
+    channels: [],
+    mappings: [],
+    filters: {
+      projectId: "",
+      platform: "",
+      status: "",
+      days: 30,
+      query: ""
+    },
+    loading: false
   }
 };
 
@@ -240,7 +260,66 @@ const dom = {
   authSubmitBtn: document.getElementById("authSubmitBtn"),
   authSpinner: document.getElementById("authSpinner"),
   authSubmitBtnText: document.getElementById("authSubmitBtnText"),
-  logoutBtn: document.getElementById("logoutBtn")
+  logoutBtn: document.getElementById("logoutBtn"),
+
+  // Timeline DOM Elements
+  tabBtnTimeline: document.getElementById("tabBtnTimeline"),
+  badgeTimelineCount: document.getElementById("badgeTimelineCount"),
+  kpiTimelineFuture: document.getElementById("kpiTimelineFuture"),
+  kpiTimelineIncluded: document.getElementById("kpiTimelineIncluded"),
+  kpiTimelineExcluded: document.getElementById("kpiTimelineExcluded"),
+  kpiTimelineSponsored: document.getElementById("kpiTimelineSponsored"),
+  kpiPubblieStatus: document.getElementById("kpiPubblieStatus"),
+  kpiPubblieIndicator: document.getElementById("kpiPubblieIndicator"),
+  pubblieConnectPrompt: document.getElementById("pubblieConnectPrompt"),
+  promptConnectPubblieBtn: document.getElementById("promptConnectPubblieBtn"),
+  openPubblieConfigBtn: document.getElementById("openPubblieConfigBtn"),
+  refreshTimelineBtn: document.getElementById("refreshTimelineBtn"),
+  timelineSpinner: document.getElementById("timelineSpinner"),
+  refreshTimelineBtnText: document.getElementById("refreshTimelineBtnText"),
+  timelineFilterProject: document.getElementById("timelineFilterProject"),
+  timelineFilterPlatform: document.getElementById("timelineFilterPlatform"),
+  timelineFilterStatus: document.getElementById("timelineFilterStatus"),
+  timelineFilterDays: document.getElementById("timelineFilterDays"),
+  timelineSearchInput: document.getElementById("timelineSearchInput"),
+  timelineIncludeAllBtn: document.getElementById("timelineIncludeAllBtn"),
+  timelineExcludeAllBtn: document.getElementById("timelineExcludeAllBtn"),
+  timelineStream: document.getElementById("timelineStream"),
+  timelineEmptyState: document.getElementById("timelineEmptyState"),
+  timelineEmptyText: document.getElementById("timelineEmptyText"),
+  timelineEmptyActionBtn: document.getElementById("timelineEmptyActionBtn"),
+
+  // Pubblie Modal Elements
+  pubblieConfigDialog: document.getElementById("pubblieConfigDialog"),
+  closePubblieConfigBtn: document.getElementById("closePubblieConfigBtn"),
+  closePubblieConfigBottomBtn: document.getElementById("closePubblieConfigBottomBtn"),
+  subtabBtnPubblieKey: document.getElementById("subtabBtnPubblieKey"),
+  subtabBtnPubblieMapping: document.getElementById("subtabBtnPubblieMapping"),
+  subtabBtnPubblieList: document.getElementById("subtabBtnPubblieList"),
+  pubblieKeySection: document.getElementById("pubblieKeySection"),
+  pubblieMappingSection: document.getElementById("pubblieMappingSection"),
+  pubblieListSection: document.getElementById("pubblieListSection"),
+  pubblieApiKeyInput: document.getElementById("pubblieApiKeyInput"),
+  togglePubblieKeyBtn: document.getElementById("togglePubblieKeyBtn"),
+  testAndSavePubblieKeyBtn: document.getElementById("testAndSavePubblieKeyBtn"),
+  pubblieKeySpinner: document.getElementById("pubblieKeySpinner"),
+  testAndSavePubblieKeyText: document.getElementById("testAndSavePubblieKeyText"),
+  disconnectPubblieBtn: document.getElementById("disconnectPubblieBtn"),
+  pubblieConnectionAlert: document.getElementById("pubblieConnectionAlert"),
+  pubblieCopyFromAutoSelect: document.getElementById("pubblieCopyFromAutoSelect"),
+  pubblieApplyAutoShortcutBtn: document.getElementById("pubblieApplyAutoShortcutBtn"),
+  mappingPubblieProjectSelect: document.getElementById("mappingPubblieProjectSelect"),
+  mappingPubblieChannelSelect: document.getElementById("mappingPubblieChannelSelect"),
+  mappingAdAccountSelect: document.getElementById("mappingAdAccountSelect"),
+  mappingCampaignSelect: document.getElementById("mappingCampaignSelect"),
+  mappingAdsetSelect: document.getElementById("mappingAdsetSelect"),
+  mappingRuleSelect: document.getElementById("mappingRuleSelect"),
+  mappingNamingPattern: document.getElementById("mappingNamingPattern"),
+  mappingAdStatusSelect: document.getElementById("mappingAdStatusSelect"),
+  mappingAutoIncludeFlowCheckbox: document.getElementById("mappingAutoIncludeFlowCheckbox"),
+  savePubblieMappingBtn: document.getElementById("savePubblieMappingBtn"),
+  pubblieMappingsListContainer: document.getElementById("pubblieMappingsListContainer"),
+  pubblieMappingsCountBadge: document.getElementById("pubblieMappingsCountBadge")
 };
 
 // -----------------------------------------------------------------------------
@@ -289,6 +368,9 @@ function setupTabs() {
         loadLogs();
       } else if (targetViewId === "guideView") {
         updateGuideView();
+      } else if (targetViewId === "timelineView") {
+        loadTimelineFeed();
+        checkPubblieStatus();
       }
     });
   });
@@ -1942,8 +2024,917 @@ async function loadInitialData() {
     loadAutomations(),
     loadSystemStatus(),
     loadLogs(),
-    loadManualConfig()
+    loadManualConfig(),
+    checkPubblieStatus(),
+    loadTimelineFeed()
   ]);
+}
+
+// -----------------------------------------------------------------------------
+// TIMELINE FLOW & PUBBLIE CONTROLLER IMPLEMENTATION
+// -----------------------------------------------------------------------------
+
+function formatTimelineDateGroup(dateStr) {
+  if (!dateStr) return "Senza Data";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "Data non valida";
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const targetDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const diffDays = Math.round((targetDay - today) / (1000 * 60 * 60 * 24));
+
+  const options = { weekday: "long", day: "numeric", month: "long" };
+  const formattedDate = d.toLocaleDateString("it-IT", options);
+
+  if (diffDays === 0) return `Oggi • ${formattedDate}`;
+  if (diffDays === 1) return `Domani • ${formattedDate}`;
+  if (diffDays === -1) return `Ieri • ${formattedDate}`;
+  if (diffDays > 1 && diffDays <= 7) return `Tra ${diffDays} giorni • ${formattedDate}`;
+  if (diffDays > 7) return `Tra ${diffDays} giorni • ${formattedDate}`;
+  return formattedDate;
+}
+
+function formatTimeOnly(dateStr) {
+  if (!dateStr) return "";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+}
+
+async function checkPubblieStatus() {
+  try {
+    const res = await api("/api/pubblie/status");
+    state.timeline.pubblieConfigured = Boolean(res.configured && res.connection?.ok);
+    state.timeline.pubblieUser = res.connection?.user || null;
+
+    if (dom.kpiPubblieStatus && dom.kpiPubblieIndicator) {
+      if (state.timeline.pubblieConfigured) {
+        dom.kpiPubblieStatus.textContent = "Connesso";
+        dom.kpiPubblieStatus.style.color = "var(--accent-emerald)";
+        dom.kpiPubblieIndicator.className = "status-indicator success";
+      } else if (res.configured) {
+        dom.kpiPubblieStatus.textContent = "Errore Connessione";
+        dom.kpiPubblieStatus.style.color = "var(--accent-rose)";
+        dom.kpiPubblieIndicator.className = "status-indicator danger";
+      } else {
+        dom.kpiPubblieStatus.textContent = "Non Connesso";
+        dom.kpiPubblieStatus.style.color = "var(--accent-amber)";
+        dom.kpiPubblieIndicator.className = "status-indicator warning";
+      }
+    }
+
+    if (dom.pubblieConnectPrompt) {
+      dom.pubblieConnectPrompt.style.display = state.timeline.pubblieConfigured ? "none" : "flex";
+    }
+
+    if (state.timeline.pubblieConfigured) {
+      loadPubblieProjects();
+    }
+  } catch (err) {
+    console.warn("Errore verifica Pubblie:", err);
+  }
+}
+
+async function loadTimelineFeed() {
+  if (state.timeline.loading) return;
+  state.timeline.loading = true;
+
+  if (dom.timelineSpinner) dom.timelineSpinner.style.display = "inline-block";
+  if (dom.refreshTimelineBtnText) dom.refreshTimelineBtnText.textContent = "Sincronizzazione...";
+
+  try {
+    const params = new URLSearchParams();
+    if (state.timeline.filters.projectId) params.set("projectId", state.timeline.filters.projectId);
+    if (state.timeline.filters.platform) params.set("platform", state.timeline.filters.platform);
+    if (state.timeline.filters.status) params.set("status", state.timeline.filters.status);
+    if (state.timeline.filters.days) params.set("days", state.timeline.filters.days);
+
+    const res = await api(`/api/timeline/feed?${params.toString()}`);
+    state.timeline.items = res.data || [];
+    state.timeline.stats = res.stats || {};
+    state.timeline.mappings = res.mappings || [];
+
+    // Update badges & KPIs
+    if (dom.badgeTimelineCount) dom.badgeTimelineCount.textContent = res.stats?.upcomingCount || 0;
+    if (dom.pubblieMappingsCountBadge) dom.pubblieMappingsCountBadge.textContent = res.mappings?.length || 0;
+
+    if (dom.kpiTimelineFuture) dom.kpiTimelineFuture.textContent = res.stats?.upcomingCount || 0;
+    if (dom.kpiTimelineIncluded) dom.kpiTimelineIncluded.textContent = res.stats?.includedCount || 0;
+    if (dom.kpiTimelineExcluded) dom.kpiTimelineExcluded.textContent = res.stats?.excludedCount || 0;
+    if (dom.kpiTimelineSponsored) dom.kpiTimelineSponsored.textContent = res.stats?.sponsoredCount || 0;
+
+    renderTimelineStream();
+  } catch (err) {
+    console.error("Errore caricamento timeline feed:", err);
+    showBanner(`Errore caricamento feed timeline: ${err.message}`, "danger");
+  } finally {
+    state.timeline.loading = false;
+    if (dom.timelineSpinner) dom.timelineSpinner.style.display = "none";
+    if (dom.refreshTimelineBtnText) dom.refreshTimelineBtnText.textContent = "🔄 Sincronizza Previsioni";
+  }
+}
+
+function renderTimelineStream() {
+  const container = dom.timelineStream;
+  const empty = dom.timelineEmptyState;
+  if (!container || !empty) return;
+
+  container.innerHTML = "";
+
+  const query = (state.timeline.filters.query || "").toLowerCase().trim();
+  let items = state.timeline.items;
+
+  if (query) {
+    items = items.filter(it => 
+      (it.text || "").toLowerCase().includes(query) ||
+      (it.projectName || "").toLowerCase().includes(query) ||
+      (it.channelName || "").toLowerCase().includes(query)
+    );
+  }
+
+  if (!items.length) {
+    empty.style.display = "block";
+    container.style.display = "none";
+    return;
+  }
+
+  empty.style.display = "none";
+  container.style.display = "block";
+
+  // Group items by date string
+  const groups = {};
+  for (const item of items) {
+    const groupKey = formatTimelineDateGroup(item.effectiveDate);
+    if (!groups[groupKey]) groups[groupKey] = [];
+    groups[groupKey].push(item);
+  }
+
+  for (const [dateLabel, groupItems] of Object.entries(groups)) {
+    const groupEl = document.createElement("div");
+    groupEl.className = "timeline-date-group";
+
+    const headerEl = document.createElement("div");
+    headerEl.className = "timeline-date-header";
+    headerEl.innerHTML = `
+      <span class="date-badge-dot"></span>
+      <span>${escapeHtml(dateLabel)}</span>
+      <span style="opacity: 0.6; font-size: 0.76rem; font-weight: normal;">(${groupItems.length} post)</span>
+    `;
+    groupEl.appendChild(headerEl);
+
+    const cardsListEl = document.createElement("div");
+    cardsListEl.className = "timeline-cards-list";
+
+    for (const item of groupItems) {
+      const cardWrapper = document.createElement("div");
+      cardWrapper.className = `timeline-card-wrapper ${item.flowStatus.toLowerCase()}`;
+      cardWrapper.dataset.postId = item.rawId;
+
+      const node = document.createElement("div");
+      node.className = "timeline-node";
+      cardWrapper.appendChild(node);
+
+      const card = document.createElement("div");
+      card.className = `timeline-card flow-${item.flowStatus.toLowerCase()}`;
+
+      // 1. Header
+      const header = document.createElement("div");
+      header.className = "timeline-card-header";
+
+      const badgesLeft = document.createElement("div");
+      badgesLeft.className = "timeline-badges-left";
+
+      const timeBadge = document.createElement("span");
+      timeBadge.className = "timeline-time-badge";
+      timeBadge.textContent = formatTimeOnly(item.effectiveDate) || "Programmato";
+      badgesLeft.appendChild(timeBadge);
+
+      const platformPill = document.createElement("span");
+      const isIg = item.platform.toLowerCase() === "instagram";
+      platformPill.className = `timeline-platform-pill ${isIg ? "ig" : "fb"}`;
+      platformPill.textContent = isIg ? "📸 Instagram" : "📘 Facebook";
+      badgesLeft.appendChild(platformPill);
+
+      if (item.projectName) {
+        const projBadge = document.createElement("span");
+        projBadge.className = "badge-tag";
+        projBadge.style.fontSize = "0.72rem";
+        projBadge.textContent = item.projectName;
+        badgesLeft.appendChild(projBadge);
+      }
+
+      header.appendChild(badgesLeft);
+
+      // Status Pill Right
+      const statusPill = document.createElement("span");
+      statusPill.className = `timeline-status-badge ${item.flowStatus.toLowerCase()}`;
+      if (item.flowStatus === "SPONSORED") {
+        statusPill.innerHTML = `🚀 Sponsorizzato su Meta ${item.adId ? `(ID: ${item.adId.slice(-6)})` : ""}`;
+      } else if (item.flowStatus === "INCLUDED") {
+        statusPill.innerHTML = `🟢 Incluso nel Flow (Verrà Sponsorizzato)`;
+      } else {
+        statusPill.innerHTML = `⛔ Escluso dal Flow (Non Sponsorizzare)`;
+      }
+      header.appendChild(statusPill);
+
+      card.appendChild(header);
+
+      // 2. Body
+      const body = document.createElement("div");
+      body.className = "timeline-card-body";
+
+      const mediaBox = document.createElement("div");
+      mediaBox.className = "timeline-media-box";
+      if (item.images && item.images.length > 0) {
+        const img = document.createElement("img");
+        img.src = item.images[0];
+        img.alt = "Anteprima Post";
+        img.loading = "lazy";
+        img.onerror = () => {
+          mediaBox.innerHTML = `<span class="timeline-media-placeholder">${isIg ? "📸" : "📘"}</span>`;
+        };
+        mediaBox.appendChild(img);
+      } else {
+        mediaBox.innerHTML = `<span class="timeline-media-placeholder">${isIg ? "📸" : "📘"}</span>`;
+      }
+      body.appendChild(mediaBox);
+
+      const contentBox = document.createElement("div");
+      contentBox.className = "timeline-content-box";
+
+      const caption = document.createElement("p");
+      caption.className = "timeline-caption-text";
+      caption.textContent = item.text || "(Nessun testo / media caption)";
+      contentBox.appendChild(caption);
+
+      const targetPill = document.createElement("div");
+      targetPill.className = "timeline-destination-pill";
+      if (item.mapping) {
+        const accName = item.mapping.ad_account_name || item.mapping.ad_account_id;
+        const campName = item.mapping.campaign_name || item.mapping.campaign_id;
+        const adsetName = item.mapping.adset_name || item.mapping.adset_id;
+        targetPill.innerHTML = `<span class="dest-icon">🎯</span> Destinazione Meta: <strong>${escapeHtml(accName)}</strong> &gt; ${escapeHtml(campName)} &gt; <strong>${escapeHtml(adsetName)}</strong>`;
+      } else {
+        targetPill.innerHTML = `<span style="color: var(--accent-amber);">⚠️ Nessun parametro Meta associato</span> • <a href="#" class="configure-mapping-link" style="color: var(--accent-emerald); text-decoration: underline;">Associa ora</a>`;
+        targetPill.querySelector(".configure-mapping-link")?.addEventListener("click", (e) => {
+          e.preventDefault();
+          openPubblieConfigModal("mapping");
+        });
+      }
+      contentBox.appendChild(targetPill);
+
+      body.appendChild(contentBox);
+      card.appendChild(body);
+
+      // 3. Footer / Controls
+      const footer = document.createElement("div");
+      footer.className = "timeline-card-footer";
+
+      if (item.flowStatus !== "SPONSORED") {
+        const flowToggleWrapper = document.createElement("label");
+        flowToggleWrapper.className = "flow-toggle-wrapper";
+        flowToggleWrapper.title = "Attiva per sponsorizzare questo post o disattiva per escluderlo dal flow";
+
+        const isChecked = item.flowStatus === "INCLUDED";
+        flowToggleWrapper.innerHTML = `
+          <input type="checkbox" class="flow-toggle-checkbox" ${isChecked ? "checked" : ""}>
+          <span class="flow-toggle-switch"></span>
+          <span class="flow-toggle-label">${isChecked ? "Sponsorizza nel Flow" : "Non Sponsorizzare"}</span>
+        `;
+
+        const checkbox = flowToggleWrapper.querySelector(".flow-toggle-checkbox");
+        checkbox.addEventListener("change", () => {
+          const newStatus = checkbox.checked ? "INCLUDED" : "EXCLUDED";
+          flowToggleWrapper.querySelector(".flow-toggle-label").textContent = checkbox.checked ? "Sponsorizza nel Flow" : "Non Sponsorizzare";
+          togglePostFlow(item.rawId, checkbox.checked);
+        });
+
+        footer.appendChild(flowToggleWrapper);
+      } else {
+        const sponsoredNote = document.createElement("span");
+        sponsoredNote.style.fontSize = "0.82rem";
+        sponsoredNote.style.color = "var(--accent-blue)";
+        sponsoredNote.style.fontWeight = "600";
+        sponsoredNote.innerHTML = `✓ Annuncio Meta Creato con successo`;
+        footer.appendChild(sponsoredNote);
+      }
+
+      const actions = document.createElement("div");
+      actions.className = "timeline-card-actions";
+
+      if (item.flowStatus !== "SPONSORED" && item.mapping) {
+        const sponsorNowBtn = document.createElement("button");
+        sponsorNowBtn.type = "button";
+        sponsorNowBtn.className = "btn btn-secondary btn-sm";
+        sponsorNowBtn.innerHTML = `⚡ Sponsorizza Ora`;
+        sponsorNowBtn.title = "Crea subito l'inserzione su Meta Ads per questo post";
+        sponsorNowBtn.addEventListener("click", () => sponsorTimelinePostNow(item));
+        actions.appendChild(sponsorNowBtn);
+      }
+
+      if (item.link) {
+        const openLink = document.createElement("a");
+        openLink.href = item.link;
+        openLink.target = "_blank";
+        openLink.rel = "noopener noreferrer";
+        openLink.className = "btn btn-ghost btn-sm";
+        openLink.innerHTML = `🔗 Apri`;
+        actions.appendChild(openLink);
+      }
+
+      footer.appendChild(actions);
+      card.appendChild(footer);
+
+      cardWrapper.appendChild(card);
+      cardsListEl.appendChild(cardWrapper);
+    }
+
+    groupEl.appendChild(cardsListEl);
+    container.appendChild(groupEl);
+  }
+}
+
+async function togglePostFlow(postId, included) {
+  const newStatus = included ? "INCLUDED" : "EXCLUDED";
+  const item = state.timeline.items.find(i => i.rawId === postId);
+  if (item) {
+    item.flowStatus = newStatus;
+  }
+
+  // Update card in DOM
+  const wrapper = document.querySelector(`.timeline-card-wrapper[data-post-id="${postId}"]`);
+  if (wrapper) {
+    wrapper.className = `timeline-card-wrapper ${newStatus.toLowerCase()}`;
+    const card = wrapper.querySelector(".timeline-card");
+    if (card) {
+      card.className = `timeline-card flow-${newStatus.toLowerCase()}`;
+    }
+    const statusPill = wrapper.querySelector(".timeline-status-badge");
+    if (statusPill) {
+      statusPill.className = `timeline-status-badge ${newStatus.toLowerCase()}`;
+      statusPill.innerHTML = included ? `🟢 Incluso nel Flow (Verrà Sponsorizzato)` : `⛔ Escluso dal Flow (Non Sponsorizzare)`;
+    }
+  }
+
+  // Update KPI counters
+  const incCount = state.timeline.items.filter(i => i.flowStatus === "INCLUDED").length;
+  const excCount = state.timeline.items.filter(i => i.flowStatus === "EXCLUDED").length;
+  if (dom.kpiTimelineIncluded) dom.kpiTimelineIncluded.textContent = incCount;
+  if (dom.kpiTimelineExcluded) dom.kpiTimelineExcluded.textContent = excCount;
+
+  try {
+    await api("/api/timeline/decision", {
+      method: "POST",
+      body: JSON.stringify({ postId, status: newStatus })
+    });
+  } catch (err) {
+    console.error("Errore aggiornamento decisione flow:", err);
+    showBanner(`Errore salvataggio decisione flow: ${err.message}`, "danger");
+  }
+}
+
+async function bulkToggleFlow(status) {
+  const visibleCards = Array.from(document.querySelectorAll(".timeline-card-wrapper"));
+  const postIds = visibleCards.map(c => c.dataset.postId).filter(Boolean);
+
+  if (!postIds.length) {
+    showBanner("Nessun post visibile da aggiornare.", "warning");
+    return;
+  }
+
+  const isIncluded = status === "INCLUDED";
+  postIds.forEach(id => {
+    const item = state.timeline.items.find(i => i.rawId === id);
+    if (item && item.flowStatus !== "SPONSORED") {
+      item.flowStatus = status;
+    }
+  });
+
+  renderTimelineStream();
+
+  const incCount = state.timeline.items.filter(i => i.flowStatus === "INCLUDED").length;
+  const excCount = state.timeline.items.filter(i => i.flowStatus === "EXCLUDED").length;
+  if (dom.kpiTimelineIncluded) dom.kpiTimelineIncluded.textContent = incCount;
+  if (dom.kpiTimelineExcluded) dom.kpiTimelineExcluded.textContent = excCount;
+
+  try {
+    await api("/api/timeline/bulk-decision", {
+      method: "POST",
+      body: JSON.stringify({ postIds, status })
+    });
+    showBanner(`✓ ${postIds.length} post aggiornati nel Flow (${isIncluded ? "Tutti Inclusi" : "Tutti Esclusi"}).`, "info");
+  } catch (err) {
+    console.error("Errore bulk toggle flow:", err);
+    showBanner(`Errore aggiornamento batch: ${err.message}`, "danger");
+  }
+}
+
+async function sponsorTimelinePostNow(item) {
+  if (!item.mapping) {
+    alert("Devi prima associare i parametri Meta a questo canale nelle impostazioni di Pubblie.");
+    openPubblieConfigModal("mapping");
+    return;
+  }
+
+  const confirmMsg = `Vuoi creare subito un'inserzione Meta per questo post?\n\n` +
+    `• Account: ${item.mapping.ad_account_name || item.mapping.ad_account_id}\n` +
+    `• Campagna: ${item.mapping.campaign_name || item.mapping.campaign_id}\n` +
+    `• Gruppo (AdSet): ${item.mapping.adset_name || item.mapping.adset_id}\n` +
+    `• Stato: ${item.mapping.ad_status || "PAUSED"}`;
+
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    showBanner("Creazione inserzione su Meta in corso...", "info");
+    const payload = {
+      postId: item.rawId,
+      sourcePostId: item.rawId,
+      platform: item.platform,
+      adAccountId: item.mapping.ad_account_id,
+      adsetId: item.mapping.adset_id,
+      ruleId: item.mapping.rule_id || null,
+      adName: `ADV - ${item.platform} - ${item.text.slice(0, 30).trim() || item.rawId.slice(-6)}`,
+      adStatus: item.mapping.ad_status || "PAUSED",
+      permalink: item.link || ""
+    };
+
+    const res = await api("/api/timeline/sponsor-now", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    item.flowStatus = "SPONSORED";
+    item.adId = res.adId;
+    renderTimelineStream();
+
+    showBanner(`✓ Inserzione creata con successo su Meta Ads! (Ad ID: ${res.adId})`, "info");
+  } catch (err) {
+    console.error("Errore sponsorizzazione immediata:", err);
+    alert(`Errore creazione inserzione Meta: ${err.message}`);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// PUBBLIE CONFIGURATION & META MAPPING MODAL
+// -----------------------------------------------------------------------------
+
+function openPubblieConfigModal(targetSubtab = "key") {
+  if (!dom.pubblieConfigDialog) return;
+  dom.pubblieConfigDialog.showModal();
+  switchPubblieSubtab(targetSubtab === "mapping" ? "pubblieMappingSection" : (targetSubtab === "list" ? "pubblieListSection" : "pubblieKeySection"));
+  loadPubblieMappings();
+  loadPubblieProjects();
+  populatePubblieAutoShortcuts();
+  populatePubblieMetaAccounts();
+}
+
+function switchPubblieSubtab(sectionId) {
+  const tabs = [
+    { btn: dom.subtabBtnPubblieKey, sec: dom.pubblieKeySection, id: "pubblieKeySection" },
+    { btn: dom.subtabBtnPubblieMapping, sec: dom.pubblieMappingSection, id: "pubblieMappingSection" },
+    { btn: dom.subtabBtnPubblieList, sec: dom.pubblieListSection, id: "pubblieListSection" }
+  ];
+
+  tabs.forEach(t => {
+    const isTarget = t.id === sectionId;
+    t.btn?.classList.toggle("active", isTarget);
+    if (t.sec) t.sec.style.display = isTarget ? "block" : "none";
+  });
+}
+
+function populatePubblieAutoShortcuts() {
+  const select = dom.pubblieCopyFromAutoSelect;
+  if (!select) return;
+  select.innerHTML = `<option value="">-- Seleziona un'automazione da copiare --</option>`;
+  for (const auto of state.automations) {
+    const opt = document.createElement("option");
+    opt.value = auto.id;
+    opt.textContent = `${auto.name} (${auto.platform} • ${auto.adset_name || auto.adset_id})`;
+    select.appendChild(opt);
+  }
+}
+
+function populatePubblieMetaAccounts(targetAccountId = "") {
+  const select = dom.mappingAdAccountSelect;
+  if (!select) return;
+  select.innerHTML = `<option value="">-- Seleziona Account Pubblicitario Meta --</option>`;
+  const visible = (state.allAdAccounts || []).filter(acc => !state.hiddenAccountIds.has(acc.id) || acc.id === targetAccountId);
+  visible.forEach(acc => {
+    const opt = document.createElement("option");
+    opt.value = acc.id;
+    opt.textContent = `${acc.name} (${acc.id})` + (state.hiddenAccountIds.has(acc.id) ? " [Archiviato]" : "");
+    if (targetAccountId && acc.id === targetAccountId) opt.selected = true;
+    select.appendChild(opt);
+  });
+}
+
+async function loadPubblieMetaCampaigns(accountId, targetCampaignId = "", targetAdsetId = "", targetRuleId = "") {
+  const campSelect = dom.mappingCampaignSelect;
+  const adsetSelect = dom.mappingAdsetSelect;
+  const ruleSelect = dom.mappingRuleSelect;
+  if (!campSelect || !accountId) return;
+
+  campSelect.innerHTML = `<option value="">Caricamento campagne...</option>`;
+  if (adsetSelect) adsetSelect.innerHTML = `<option value="">-- Seleziona prima campagna --</option>`;
+  if (ruleSelect) ruleSelect.innerHTML = `<option value="">Caricamento regole...</option>`;
+
+  try {
+    const [campRes, ruleRes] = await Promise.all([
+      api(`/api/meta/campaigns?accountId=${encodeURIComponent(accountId)}`),
+      api(`/api/meta/rules?accountId=${encodeURIComponent(accountId)}`).catch(() => ({ data: [] }))
+    ]);
+
+    const campaigns = campRes.data || [];
+    campSelect.innerHTML = `<option value="">-- Seleziona Campagna Meta --</option>`;
+    campaigns.forEach(c => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.name} [${c.effective_status || c.status}]`;
+      if (targetCampaignId && c.id === targetCampaignId) opt.selected = true;
+      campSelect.appendChild(opt);
+    });
+
+    if (ruleSelect) {
+      const rules = ruleRes.data || [];
+      ruleSelect.innerHTML = `<option value="">Nessuna regola</option>`;
+      rules.forEach(r => {
+        const opt = document.createElement("option");
+        opt.value = r.id;
+        opt.textContent = r.name || r.id;
+        if (targetRuleId && r.id === targetRuleId) opt.selected = true;
+        ruleSelect.appendChild(opt);
+      });
+    }
+
+    const selectedCampId = targetCampaignId || campSelect.value;
+    if (selectedCampId) {
+      await loadPubblieMetaAdsets(accountId, selectedCampId, targetAdsetId);
+    }
+  } catch (err) {
+    campSelect.innerHTML = `<option value="">Errore campagne: ${escapeHtml(err.message)}</option>`;
+  }
+}
+
+async function loadPubblieMetaAdsets(accountId, campaignId, targetAdsetId = "") {
+  const adsetSelect = dom.mappingAdsetSelect;
+  if (!adsetSelect || !accountId || !campaignId) return;
+
+  adsetSelect.innerHTML = `<option value="">Caricamento gruppi...</option>`;
+  try {
+    const res = await api(`/api/meta/adsets?accountId=${encodeURIComponent(accountId)}&campaignId=${encodeURIComponent(campaignId)}`);
+    const adsets = res.data || [];
+    adsetSelect.innerHTML = `<option value="">-- Seleziona Gruppo Inserzioni (AdSet) --</option>`;
+    adsets.forEach(a => {
+      const opt = document.createElement("option");
+      opt.value = a.id;
+      opt.textContent = `${a.name} [${a.effective_status || a.status}]`;
+      if (targetAdsetId && a.id === targetAdsetId) opt.selected = true;
+      adsetSelect.appendChild(opt);
+    });
+  } catch (err) {
+    adsetSelect.innerHTML = `<option value="">Errore gruppi: ${escapeHtml(err.message)}</option>`;
+  }
+}
+
+async function loadPubblieProjects() {
+  const projectSelect = dom.mappingPubblieProjectSelect;
+  const filterProject = dom.timelineFilterProject;
+  if (!projectSelect) return;
+
+  try {
+    const res = await api("/api/pubblie/projects");
+    state.timeline.projects = res.data || [];
+
+    projectSelect.innerHTML = `<option value="">-- Seleziona un Progetto Pubblie --</option>`;
+    if (filterProject) {
+      filterProject.innerHTML = `<option value="">Tutti i Progetti</option>`;
+    }
+
+    for (const p of state.timeline.projects) {
+      const opt = document.createElement("option");
+      opt.value = p.id;
+      opt.textContent = `${p.name} ${p.teamName ? `(${p.teamName})` : ""}`;
+      projectSelect.appendChild(opt);
+
+      if (filterProject) {
+        const optFilter = document.createElement("option");
+        optFilter.value = p.id;
+        optFilter.textContent = `${p.name} ${p.teamName ? `(${p.teamName})` : ""}`;
+        filterProject.appendChild(optFilter);
+      }
+    }
+  } catch (err) {
+    console.warn("Impossibile caricare progetti Pubblie:", err);
+    projectSelect.innerHTML = `<option value="">(Nessun progetto trovato o chiave non valida)</option>`;
+  }
+}
+
+async function loadPubblieChannels(projectId) {
+  const channelSelect = dom.mappingPubblieChannelSelect;
+  if (!channelSelect || !projectId) return;
+
+  channelSelect.innerHTML = `<option value="">Caricamento canali...</option>`;
+  try {
+    const res = await api(`/api/pubblie/projects/${encodeURIComponent(projectId)}/channels`);
+    state.timeline.channels = res.data || [];
+
+    channelSelect.innerHTML = `<option value="">Tutti i Canali del Progetto (Predefinito)</option>`;
+    for (const c of state.timeline.channels) {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.dataset.provider = c.provider;
+      opt.textContent = `${c.provider?.toUpperCase() || "SOCIAL"}: ${c.name} ${c.accountUsername ? `(@${c.accountUsername})` : ""}`;
+      channelSelect.appendChild(opt);
+    }
+  } catch (err) {
+    console.warn("Impossibile caricare canali Pubblie:", err);
+    channelSelect.innerHTML = `<option value="">Errore caricamento canali</option>`;
+  }
+}
+
+async function loadPubblieMappings() {
+  try {
+    const res = await api("/api/pubblie/mappings");
+    state.timeline.mappings = res.data || [];
+    if (dom.pubblieMappingsCountBadge) {
+      dom.pubblieMappingsCountBadge.textContent = state.timeline.mappings.length;
+    }
+    renderPubblieMappingsList();
+  } catch (err) {
+    console.warn("Errore caricamento mappature Pubblie:", err);
+  }
+}
+
+function renderPubblieMappingsList() {
+  const container = dom.pubblieMappingsListContainer;
+  if (!container) return;
+
+  container.innerHTML = "";
+  if (!state.timeline.mappings.length) {
+    container.innerHTML = `
+      <div class="empty-state" style="padding: 24px 16px;">
+        <p style="margin: 0; color: var(--text-dim); font-size: 0.88rem;">
+          Nessuna associazione configurata. Vai nel tab <strong>"2. Associa Canali a Meta Ads"</strong> per collegare i tuoi canali Pubblie agli account pubblicitari Meta.
+        </p>
+      </div>
+    `;
+    return;
+  }
+
+  for (const m of state.timeline.mappings) {
+    const card = document.createElement("div");
+    card.className = "pubblie-mapping-card";
+
+    const isIg = (m.channel_provider || "").toLowerCase().includes("insta");
+    card.innerHTML = `
+      <div>
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+          <span class="timeline-platform-pill ${isIg ? "ig" : "fb"}">${isIg ? "📸 Instagram" : "📘 Facebook"}</span>
+          <strong>${escapeHtml(m.channel_name || m.project_name || "Canale")}</strong>
+          <span style="font-size: 0.75rem; color: var(--text-dim); font-family: 'JetBrains Mono', monospace;">(Proj: ${escapeHtml(m.project_name)})</span>
+        </div>
+        <div style="font-size: 0.82rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">
+          🎯 ${escapeHtml(m.ad_account_name || m.ad_account_id)} &gt; ${escapeHtml(m.campaign_name || m.campaign_id)} &gt; <strong>${escapeHtml(m.adset_name || m.adset_id)}</strong>
+        </div>
+      </div>
+      <div>
+        <button type="button" class="btn btn-ghost btn-sm delete-pub-map-btn" data-id="${escapeHtml(m.id)}" style="color: var(--accent-rose);" title="Elimina associazione">
+          🗑️ Elimina
+        </button>
+      </div>
+    `;
+
+    card.querySelector(".delete-pub-map-btn")?.addEventListener("click", () => handleDeletePubblieMapping(m.id));
+    container.appendChild(card);
+  }
+}
+
+async function handleDeletePubblieMapping(id) {
+  if (!confirm("Sei sicuro di voler eliminare questa associazione?")) return;
+  try {
+    await api(`/api/pubblie/mappings/${encodeURIComponent(id)}`, { method: "DELETE" });
+    showBanner("Associazione eliminata.", "info");
+    await loadPubblieMappings();
+    await loadTimelineFeed();
+  } catch (err) {
+    alert(`Errore eliminazione: ${err.message}`);
+  }
+}
+
+async function handleSavePubblieMapping() {
+  const projSelect = dom.mappingPubblieProjectSelect;
+  const chanSelect = dom.mappingPubblieChannelSelect;
+  const accSelect = dom.mappingAdAccountSelect;
+  const campSelect = dom.mappingCampaignSelect;
+  const adsetSelect = dom.mappingAdsetSelect;
+  const ruleSelect = dom.mappingRuleSelect;
+
+  const projectId = projSelect?.value;
+  const projectName = projSelect?.options[projSelect.selectedIndex]?.text || "";
+  const channelId = chanSelect?.value || "";
+  const channelName = chanSelect?.options[chanSelect.selectedIndex]?.text || "";
+  const channelProvider = chanSelect?.selectedOptions[0]?.dataset?.provider || "";
+
+  const adAccountId = accSelect?.value;
+  const adAccountName = accSelect?.options[accSelect.selectedIndex]?.text || "";
+  const campaignId = campSelect?.value;
+  const campaignName = campSelect?.options[campSelect.selectedIndex]?.text || "";
+  const adsetId = adsetSelect?.value;
+  const adsetName = adsetSelect?.options[adsetSelect.selectedIndex]?.text || "";
+  const ruleId = ruleSelect?.value || "";
+  const ruleName = ruleSelect?.options[ruleSelect?.selectedIndex]?.text || "";
+
+  if (!projectId || !adAccountId || !campaignId || !adsetId) {
+    alert("Compila tutti i campi obbligatori: Progetto Pubblie, Account Meta, Campagna e Gruppo Inserzioni.");
+    return;
+  }
+
+  const payload = {
+    project_id: projectId,
+    project_name: projectName,
+    channel_id: channelId,
+    channel_name: channelName,
+    channel_provider: channelProvider,
+    ad_account_id: adAccountId,
+    ad_account_name: adAccountName,
+    campaign_id: campaignId,
+    campaign_name: campaignName,
+    adset_id: adsetId,
+    adset_name: adsetName,
+    rule_id: ruleId,
+    rule_name: ruleName,
+    ad_name_pattern: dom.mappingNamingPattern?.value || "ADV - {platform} - {post}",
+    ad_status: dom.mappingAdStatusSelect?.value || "PAUSED",
+    auto_sponsor_on_publish: dom.mappingAutoIncludeFlowCheckbox ? dom.mappingAutoIncludeFlowCheckbox.checked : true
+  };
+
+  try {
+    await api("/api/pubblie/mappings", {
+      method: "POST",
+      body: JSON.stringify(payload)
+    });
+
+    showBanner("✓ Associazione salvata! Parametri Meta collegati con successo.", "info");
+    await loadPubblieMappings();
+    await loadTimelineFeed();
+    switchPubblieSubtab("pubblieListSection");
+  } catch (err) {
+    alert(`Errore salvataggio associazione: ${err.message}`);
+  }
+}
+
+function setupTimelineListeners() {
+  dom.refreshTimelineBtn?.addEventListener("click", () => loadTimelineFeed());
+  dom.openPubblieConfigBtn?.addEventListener("click", () => openPubblieConfigModal("key"));
+  dom.promptConnectPubblieBtn?.addEventListener("click", () => openPubblieConfigModal("key"));
+  dom.timelineEmptyActionBtn?.addEventListener("click", () => openPubblieConfigModal("key"));
+
+  // Filters
+  dom.timelineFilterProject?.addEventListener("change", (e) => {
+    state.timeline.filters.projectId = e.target.value;
+    loadTimelineFeed();
+  });
+
+  dom.timelineFilterPlatform?.addEventListener("change", (e) => {
+    state.timeline.filters.platform = e.target.value;
+    loadTimelineFeed();
+  });
+
+  dom.timelineFilterStatus?.addEventListener("change", (e) => {
+    state.timeline.filters.status = e.target.value;
+    loadTimelineFeed();
+  });
+
+  dom.timelineFilterDays?.addEventListener("change", (e) => {
+    state.timeline.filters.days = Number(e.target.value) || 30;
+    loadTimelineFeed();
+  });
+
+  dom.timelineSearchInput?.addEventListener("input", (e) => {
+    state.timeline.filters.query = e.target.value;
+    renderTimelineStream();
+  });
+
+  // Bulk actions
+  dom.timelineIncludeAllBtn?.addEventListener("click", () => bulkToggleFlow("INCLUDED"));
+  dom.timelineExcludeAllBtn?.addEventListener("click", () => bulkToggleFlow("EXCLUDED"));
+}
+
+function setupPubblieModalListeners() {
+  dom.closePubblieConfigBtn?.addEventListener("click", () => dom.pubblieConfigDialog?.close());
+  dom.closePubblieConfigBottomBtn?.addEventListener("click", () => dom.pubblieConfigDialog?.close());
+
+  dom.subtabBtnPubblieKey?.addEventListener("click", () => switchPubblieSubtab("pubblieKeySection"));
+  dom.subtabBtnPubblieMapping?.addEventListener("click", () => switchPubblieSubtab("pubblieMappingSection"));
+  dom.subtabBtnPubblieList?.addEventListener("click", () => switchPubblieSubtab("pubblieListSection"));
+
+  // Toggle API Key visibility
+  dom.togglePubblieKeyBtn?.addEventListener("click", () => {
+    const isPwd = dom.pubblieApiKeyInput.type === "password";
+    dom.pubblieApiKeyInput.type = isPwd ? "text" : "password";
+    dom.togglePubblieKeyBtn.textContent = isPwd ? "🙈" : "👁️";
+  });
+
+  // Test and Save API Key
+  dom.testAndSavePubblieKeyBtn?.addEventListener("click", async () => {
+    const key = dom.pubblieApiKeyInput?.value?.trim();
+    if (!key) {
+      alert("Inserisci la tua API Key di Pubblie");
+      return;
+    }
+
+    if (dom.pubblieKeySpinner) dom.pubblieKeySpinner.style.display = "inline-block";
+    if (dom.testAndSavePubblieKeyText) dom.testAndSavePubblieKeyText.textContent = "Verifica in corso...";
+
+    try {
+      const res = await api("/api/pubblie/save-key", {
+        method: "POST",
+        body: JSON.stringify({ apiKey: key })
+      });
+
+      if (dom.pubblieConnectionAlert) {
+        dom.pubblieConnectionAlert.className = "auth-alert";
+        dom.pubblieConnectionAlert.style.background = "rgba(16, 185, 129, 0.16)";
+        dom.pubblieConnectionAlert.style.border = "1px solid rgba(16, 185, 129, 0.35)";
+        dom.pubblieConnectionAlert.style.color = "#34d399";
+        dom.pubblieConnectionAlert.style.display = "block";
+        dom.pubblieConnectionAlert.innerHTML = `✓ Connesso con successo come: <strong>${escapeHtml(res.user?.name || res.user?.email || "Utente Pubblie")}</strong>`;
+      }
+
+      showBanner("✓ Chiave API Pubblie verificata e salvata con successo!", "info");
+      await checkPubblieStatus();
+      await loadPubblieProjects();
+      await loadTimelineFeed();
+      if (dom.disconnectPubblieBtn) dom.disconnectPubblieBtn.style.display = "inline-block";
+    } catch (err) {
+      if (dom.pubblieConnectionAlert) {
+        dom.pubblieConnectionAlert.className = "auth-alert error";
+        dom.pubblieConnectionAlert.style.display = "block";
+        dom.pubblieConnectionAlert.innerHTML = `✕ Errore verifica chiave: ${escapeHtml(err.message)}`;
+      }
+    } finally {
+      if (dom.pubblieKeySpinner) dom.pubblieKeySpinner.style.display = "none";
+      if (dom.testAndSavePubblieKeyText) dom.testAndSavePubblieKeyText.textContent = "Verifica e Salva Chiave 🚀";
+    }
+  });
+
+  // Disconnect Pubblie
+  dom.disconnectPubblieBtn?.addEventListener("click", async () => {
+    if (!confirm("Vuoi scollegare Pubblie.io e cancellare l'API Key salvata?")) return;
+    try {
+      await api("/api/pubblie/disconnect", { method: "POST" });
+      dom.pubblieApiKeyInput.value = "";
+      if (dom.pubblieConnectionAlert) dom.pubblieConnectionAlert.style.display = "none";
+      dom.disconnectPubblieBtn.style.display = "none";
+      showBanner("Pubblie.io scollegato.", "info");
+      await checkPubblieStatus();
+      await loadTimelineFeed();
+    } catch (err) {
+      alert(`Errore: ${err.message}`);
+    }
+  });
+
+  // Project select change
+  dom.mappingPubblieProjectSelect?.addEventListener("change", (e) => {
+    loadPubblieChannels(e.target.value);
+  });
+
+  // Shortcut apply from existing Automation
+  dom.pubblieApplyAutoShortcutBtn?.addEventListener("click", async () => {
+    const autoId = dom.pubblieCopyFromAutoSelect?.value;
+    if (!autoId) {
+      alert("Seleziona prima un'automazione dall'elenco a tendina.");
+      return;
+    }
+    const auto = state.automations.find(a => a.id === autoId);
+    if (!auto) return;
+
+    if (dom.mappingAdAccountSelect) {
+      populatePubblieMetaAccounts(auto.ad_account_id);
+      dom.mappingAdAccountSelect.value = auto.ad_account_id;
+      await loadPubblieMetaCampaigns(auto.ad_account_id, auto.campaign_id, auto.adset_id, auto.rule_id);
+    }
+    if (dom.mappingNamingPattern) dom.mappingNamingPattern.value = auto.ad_name_pattern || "ADV - {platform} - {post}";
+    if (dom.mappingAdStatusSelect) dom.mappingAdStatusSelect.value = auto.ad_status || "PAUSED";
+
+    showBanner(`Parametri copiati dall'automazione "${auto.name}".`, "info");
+  });
+
+  // Ad Account Select in Mapping Modal
+  dom.mappingAdAccountSelect?.addEventListener("change", (e) => {
+    const accId = e.target.value;
+    loadPubblieMetaCampaigns(accId);
+  });
+
+  dom.mappingCampaignSelect?.addEventListener("change", (e) => {
+    const accId = dom.mappingAdAccountSelect?.value;
+    const campId = e.target.value;
+    loadPubblieMetaAdsets(accId, campId);
+  });
+
+  // Save Mapping
+  dom.savePubblieMappingBtn?.addEventListener("click", handleSavePubblieMapping);
 }
 
 // -----------------------------------------------------------------------------
@@ -1957,6 +2948,8 @@ async function initApp() {
   setupManualListeners();
   setupAccountManagement();
   setupAuth();
+  setupTimelineListeners();
+  setupPubblieModalListeners();
 
   const authStatus = await checkAuthStatus();
   if (authStatus.authenticated) {
@@ -1977,5 +2970,6 @@ async function initApp() {
 }
 
 window.addEventListener("DOMContentLoaded", initApp);
+
 
 

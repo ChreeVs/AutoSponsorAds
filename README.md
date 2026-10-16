@@ -26,9 +26,16 @@ Progettata per funzionare a **costo zero** sul piano gratuito di **Render.com** 
 
 3. **Dashboard Web Moderna:**
    - **⚡ Automazioni:** visualizzazione a schede, switch attiva/disattiva, pulsante *"Esegui Ora"*, creazione guidata con modale.
+   - **📅 Timeline Flow (con Pubblie.io):** previsione dei post programmati in uscita, selezione/deselezione dei contenuti per creare il flow di sponsorizzazione desiderato e associazione una tantum dei parametri Meta.
    - **📦 Sponsor Manuale:** l'esperienza bulk del tool originale preservata e potenziata.
    - **📋 Storico & Log:** audit trail completo di ogni controllo periodico e post sponsorizzato.
    - **⚙️ Setup Render:** diagnostica in tempo reale della connessione Meta e istruzioni di deploy.
+
+4. **🔮 Integrazione Pubblie.io:**
+   - Collegamento nativo con le API pubbliche di [Pubblie.io](https://pubblie.io) tramite Personal API Key.
+   - Sincronizzazione automatica dei progetti, canali social e post schedulati per i prossimi 7, 14, 30 o 60 giorni.
+   - Mappatura salvata una tantum: associa ogni canale Pubblie all'Account Meta, Campagna, AdSet e Regola desiderati.
+   - Il motore di automazione rispetta rigorosamente le decisioni prese sulla timeline: se un post è marcato come "Escluso", non verrà sponsorizzato all'uscita.
 
 ---
 
