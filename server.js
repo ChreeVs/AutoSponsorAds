@@ -156,7 +156,18 @@ async function handleApi(req, res, url) {
       // External cron runs all active automations by default (forceAll = true unless explicitly force=false)
       const forceAll = url.searchParams.get("force") !== "false";
       const result = await engine.runAllDueAutomations("EXTERNAL_CRON", forceAll);
-      return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result });
+
+      const verbose = url.searchParams.get("verbose") === "true";
+      if (verbose) {
+        return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result });
+      }
+
+      // Compact lightweight response (<60 bytes) so external crons (cron-job.org) never fail with "output too large"
+      return json(res, 200, {
+        ok: true,
+        executed: result.executedCount || 0,
+        active: result.totalActive || 0
+      });
     }
 
     // -------------------------------------------------------------------------
