@@ -153,7 +153,8 @@ async function handleApi(req, res, url) {
       if (!checkCronAuth(req, url)) {
         return json(res, 401, { error: "Non autorizzato: token CRON_SECRET errato o mancante." });
       }
-      const forceAll = url.searchParams.get("force") === "true";
+      // External cron runs all active automations by default (forceAll = true unless explicitly force=false)
+      const forceAll = url.searchParams.get("force") !== "false";
       const result = await engine.runAllDueAutomations("EXTERNAL_CRON", forceAll);
       return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result });
     }
