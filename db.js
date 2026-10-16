@@ -290,6 +290,8 @@ function setupSqliteSchema() {
       custom_target TEXT DEFAULT '',
       ad_id TEXT DEFAULT '',
       notes TEXT DEFAULT '',
+      post_text TEXT DEFAULT '',
+      post_permalink TEXT DEFAULT '',
       updated_at TEXT DEFAULT (datetime('now'))
     );
   `);
@@ -299,6 +301,8 @@ function setupSqliteSchema() {
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN adset_clone_source_id TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN adset_clone_name_pattern TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN exclude_keywords TEXT DEFAULT '';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE timeline_decisions ADD COLUMN post_text TEXT DEFAULT '';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE timeline_decisions ADD COLUMN post_permalink TEXT DEFAULT '';"); } catch {}
 }
 
 // -----------------------------------------------------------------------------
@@ -918,34 +922,41 @@ async function saveTimelineDecision(postId, data = {}) {
   const adId = data.ad_id || "";
   const notes = data.notes || "";
 
+  const postText = data.post_text || data.postText || "";
+  const postPermalink = data.post_permalink || data.postPermalink || "";
+
   if (dbType === "postgres") {
     await pgPool.query(`
       INSERT INTO timeline_decisions (
-        post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, post_text, post_permalink, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       ON CONFLICT (post_id) DO UPDATE SET
         sponsorship_status = EXCLUDED.sponsorship_status,
         custom_target = CASE WHEN EXCLUDED.custom_target <> '' THEN EXCLUDED.custom_target ELSE timeline_decisions.custom_target END,
         ad_id = CASE WHEN EXCLUDED.ad_id <> '' THEN EXCLUDED.ad_id ELSE timeline_decisions.ad_id END,
-        notes = EXCLUDED.notes,
+        notes = CASE WHEN EXCLUDED.notes <> '' THEN EXCLUDED.notes ELSE timeline_decisions.notes END,
+        post_text = CASE WHEN EXCLUDED.post_text <> '' THEN EXCLUDED.post_text ELSE timeline_decisions.post_text END,
+        post_permalink = CASE WHEN EXCLUDED.post_permalink <> '' THEN EXCLUDED.post_permalink ELSE timeline_decisions.post_permalink END,
         updated_at = EXCLUDED.updated_at
-    `, [postId, source, projectId, channelId, status, customTargetStr, adId, notes, now]);
+    `, [postId, source, projectId, channelId, status, customTargetStr, adId, notes, postText, postPermalink, now]);
     return { post_id: postId, sponsorship_status: status, updated_at: now };
   }
 
   if (dbType === "sqlite") {
     const stmt = sqliteDb.prepare(`
       INSERT INTO timeline_decisions (
-        post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, post_text, post_permalink, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (post_id) DO UPDATE SET
         sponsorship_status = excluded.sponsorship_status,
         custom_target = CASE WHEN excluded.custom_target <> '' THEN excluded.custom_target ELSE timeline_decisions.custom_target END,
         ad_id = CASE WHEN excluded.ad_id <> '' THEN excluded.ad_id ELSE timeline_decisions.ad_id END,
-        notes = excluded.notes,
+        notes = CASE WHEN excluded.notes <> '' THEN excluded.notes ELSE timeline_decisions.notes END,
+        post_text = CASE WHEN excluded.post_text <> '' THEN excluded.post_text ELSE timeline_decisions.post_text END,
+        post_permalink = CASE WHEN excluded.post_permalink <> '' THEN excluded.post_permalink ELSE timeline_decisions.post_permalink END,
         updated_at = excluded.updated_at
     `);
-    stmt.run(postId, source, projectId, channelId, status, customTargetStr, adId, notes, now);
+    stmt.run(postId, source, projectId, channelId, status, customTargetStr, adId, notes, postText, postPermalink, now);
     return { post_id: postId, sponsorship_status: status, updated_at: now };
   }
 
@@ -959,6 +970,8 @@ async function saveTimelineDecision(postId, data = {}) {
     custom_target: typeof data.custom_target === "object" ? data.custom_target : {},
     ad_id: adId,
     notes,
+    post_text: postText,
+    post_permalink: postPermalink,
     updated_at: now
   };
   saveJsonStore();

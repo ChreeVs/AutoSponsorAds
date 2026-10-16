@@ -2386,7 +2386,15 @@ async function togglePostFlow(postId, included) {
   try {
     await api("/api/timeline/decision", {
       method: "POST",
-      body: JSON.stringify({ postId, status: newStatus })
+      body: JSON.stringify({
+        postId,
+        status: newStatus,
+        source: item?.source || "pubblie",
+        projectId: item?.projectId || "",
+        channelId: item?.channelIds?.[0] || "",
+        postText: item?.text || "",
+        postPermalink: item?.link || ""
+      })
     });
   } catch (err) {
     console.error("Errore aggiornamento decisione flow:", err);

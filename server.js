@@ -887,7 +887,9 @@ async function handleApi(req, res, url) {
         source: body.source || "pubblie",
         project_id: body.projectId || "",
         channel_id: body.channelId || "",
-        custom_target: body.customTarget || null
+        custom_target: body.customTarget || null,
+        post_text: body.postText || body.post_text || "",
+        post_permalink: body.postPermalink || body.post_permalink || ""
       });
 
       return json(res, 200, { ok: true, data: saved });

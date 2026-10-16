@@ -40,6 +40,40 @@ class AutomationEngine {
     return keywords.some(k => lower.includes(k));
   }
 
+  async findMatchingTimelineDecision(post) {
+    try {
+      const allDecisions = await db.getTimelineDecisions();
+      const entries = Object.values(allDecisions);
+      if (!entries.length) return null;
+
+      // 1. Match by permalink or Instagram shortcode
+      if (post.permalink) {
+        const shortcode = post.permalink.match(/\/p\/([^\/]+)/)?.[1];
+        const match = entries.find(d => {
+          if (d.post_permalink && d.post_permalink === post.permalink) return true;
+          if (shortcode && d.post_permalink && d.post_permalink.includes(shortcode)) return true;
+          return false;
+        });
+        if (match) return match;
+      }
+
+      // 2. Match by post caption / text
+      if (post.message && post.message.trim()) {
+        const cleanPost = post.message.slice(0, 40).trim().toLowerCase();
+        if (cleanPost.length >= 10) {
+          const match = entries.find(d => {
+            const decText = (d.post_text || d.notes || "").slice(0, 40).trim().toLowerCase();
+            return decText && (decText === cleanPost || decText.includes(cleanPost) || cleanPost.includes(decText));
+          });
+          if (match) return match;
+        }
+      }
+    } catch {
+      // Ignore lookup errors
+    }
+    return null;
+  }
+
   async runSingleAutomation(automationId, triggerType = "MANUAL", force = false) {
     const automation = await db.getAutomation(automationId);
     if (!automation) throw new Error("Automazione non trovata");
@@ -109,7 +143,11 @@ class AutomationEngine {
         }
 
         // 2b. Check Timeline Flow Decision (User curated flow)
-        const timelineDecision = await db.getTimelineDecision(post.id);
+        let timelineDecision = await db.getTimelineDecision(post.id);
+        if (!timelineDecision) {
+          timelineDecision = await this.findMatchingTimelineDecision(post);
+        }
+
         if (timelineDecision && timelineDecision.sponsorship_status === "EXCLUDED") {
           console.log(`[ENGINE] Post ${post.id} escluso dalla sponsorizzazione per decisione nella Linea Temporale (Flow).`);
           report.skippedCount++;
@@ -231,6 +269,13 @@ class AutomationEngine {
 
           // Sync timeline decision state
           try {
+            if (timelineDecision && timelineDecision.post_id) {
+              await db.saveTimelineDecision(timelineDecision.post_id, {
+                sponsorship_status: "SPONSORED",
+                ad_id: ad.id,
+                notes: `Sponsorizzato con successo da automazione "${automation.name}"`
+              });
+            }
             await db.saveTimelineDecision(post.id, {
               source: automation.platform === "Facebook" ? "facebook" : "instagram",
               channel_id: automation.source_id,
