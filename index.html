@@ -251,12 +251,12 @@
           </button>
         </div>
 
-        <!-- Timeline Filters & Actions Bar -->
+        <!-- Streamlined Timeline Controls & Filter Bar -->
         <div class="timeline-controls-bar">
           <div class="timeline-filter-group">
-            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
-              <label class="filter-label" for="timelineFilterProject" style="margin-bottom: 0;">Progetto:</label>
-              <button type="button" class="btn btn-ghost btn-xs" id="managePubblieProjectsBtn" title="Archivia o ripristina progetti Pubblie" style="padding: 1px 6px; font-size: 0.72rem; color: var(--accent-emerald);">
+            <div class="timeline-project-filter-header">
+              <label class="filter-label" for="timelineFilterProject">Progetto:</label>
+              <button type="button" class="btn btn-ghost btn-xs" id="managePubblieProjectsBtn" title="Archivia o ripristina progetti Pubblie">
                 📁 Archivia (<span id="archivedProjectsCountBadge">0</span>)
               </button>
             </div>
@@ -266,69 +266,50 @@
           </div>
 
           <div class="timeline-filter-group">
-            <label class="filter-label" for="timelineFilterPlatform">Piattaforma:</label>
+            <label class="filter-label" for="timelineFilterPlatform">Canali:</label>
             <select id="timelineFilterPlatform" class="filter-select">
-              <option value="meta" selected>Tutte le piattaforme Meta (FB + IG)</option>
+              <option value="meta" selected>Meta (FB + IG)</option>
               <option value="Instagram">📸 Solo Instagram</option>
               <option value="Facebook">📘 Solo Facebook</option>
-              <option value="other">🌐 Altri canali esterni (LinkedIn, TikTok, GMB...)</option>
-              <option value="all">🌟 Tutti i canali Pubblie</option>
+              <option value="other">🌐 Social Esterni (TikTok, LinkedIn...)</option>
+              <option value="all">🌟 Tutti i Canali</option>
             </select>
           </div>
 
           <div class="timeline-filter-group">
-            <label class="filter-label" for="timelineFilterStatus">Stato Flow:</label>
+            <label class="filter-label" for="timelineFilterStatus">Stato:</label>
             <select id="timelineFilterStatus" class="filter-select">
               <option value="">Tutti gli stati</option>
-              <option value="INCLUDED">🟢 Solo Inclusi nel Flow</option>
-              <option value="EXCLUDED">⛔ Solo Esclusi</option>
-              <option value="FUTURE">🔮 Solo Previsioni Future</option>
-              <option value="SPONSORED">🚀 Già Sponsorizzati</option>
+              <option value="INCLUDED">🟢 Inclusi nel Flow</option>
+              <option value="EXCLUDED">⛔ Esclusi</option>
+              <option value="FUTURE">🔮 Previsioni Future</option>
+              <option value="SPONSORED">🚀 Sponsorizzati</option>
             </select>
           </div>
 
           <div class="timeline-filter-group">
-            <label class="filter-label" for="timelineFilterDays">Arco temporale:</label>
+            <label class="filter-label" for="timelineFilterDays">Arco:</label>
             <select id="timelineFilterDays" class="filter-select">
-              <option value="7">Prossimi 7 giorni</option>
-              <option value="14">Prossimi 14 giorni</option>
-              <option value="30" selected>Prossimi 30 giorni</option>
-              <option value="60">Prossimi 60 giorni</option>
+              <option value="7">7 giorni</option>
+              <option value="14">14 giorni</option>
+              <option value="30" selected>30 giorni</option>
+              <option value="60">60 giorni</option>
             </select>
           </div>
 
           <div class="timeline-search-group">
-            <input id="timelineSearchInput" type="search" placeholder="Cerca nel testo dei post..." autocomplete="off">
+            <input id="timelineSearchInput" type="search" placeholder="🔍 Cerca nei post..." autocomplete="off">
           </div>
 
           <div class="timeline-bulk-actions">
+            <button class="btn btn-secondary btn-sm" id="timelineScrollTodayBtn" type="button" title="Centra la vista sulla data di Oggi">
+              🎯 Oggi
+            </button>
             <button class="btn btn-ghost btn-sm" id="timelineIncludeAllBtn" type="button" title="Includi tutti i post visibili nel flow">
               ✓ Includi Tutti
             </button>
             <button class="btn btn-ghost btn-sm" id="timelineExcludeAllBtn" type="button" title="Escludi tutti i post visibili dal flow">
               ✕ Escludi Tutti
-            </button>
-          </div>
-        </div>
-
-        <!-- Horizontal Timeline Flow Navigation Strip -->
-        <div class="timeline-flow-nav-strip">
-          <div class="flow-nav-left">
-            <span class="flow-direction-indicator">
-              <span class="flow-pulse-dot"></span>
-              <strong>Flusso Orizzontale:</strong>
-              <span class="flow-arrow-seq">Passato / Oggi ───► Prossimi Giorni</span>
-            </span>
-          </div>
-          <div class="flow-nav-right">
-            <button class="btn btn-ghost btn-xs" id="timelineScrollPrevBtn" type="button" title="Scorri indietro a sinistra">
-              ◀ Precedenti
-            </button>
-            <button class="btn btn-secondary btn-xs" id="timelineScrollTodayBtn" type="button" title="Centra la vista sulla data di Oggi">
-              🎯 Salta a Oggi
-            </button>
-            <button class="btn btn-ghost btn-xs" id="timelineScrollNextBtn" type="button" title="Scorri avanti verso destra">
-              Successivi ▶
             </button>
           </div>
         </div>

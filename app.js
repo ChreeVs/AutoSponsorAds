@@ -2230,248 +2230,289 @@ function renderTimelineStream() {
     dayGroups.get(info.dateKey).items.push(item);
   }
 
-  for (const { info, items: groupItems } of dayGroups.values()) {
-    const groupEl = document.createElement("div");
-    groupEl.className = "timeline-date-group";
-    if (info.isToday) groupEl.dataset.isToday = "true";
+  // Partition groups into past (diffDays < 0) and active (diffDays >= 0)
+  const pastGroups = [];
+  const activeGroups = [];
 
-    // Date milestone header
-    const headerEl = document.createElement("div");
-    headerEl.className = `timeline-date-header ${info.isToday ? "is-today" : ""}`;
-    headerEl.title = info.fullDate || info.badgeText;
-    headerEl.innerHTML = `
-      <span class="date-milestone-marker"></span>
-      <div class="date-title-box">
-        <span>${info.isToday ? "🟢" : "📅"}</span>
-        <span>${escapeHtml(info.badgeText)}</span>
-      </div>
-      <span class="date-badge-count">${groupItems.length} post</span>
+  for (const group of dayGroups.values()) {
+    if (group.info.diffDays < 0) {
+      pastGroups.push(group);
+    } else {
+      activeGroups.push(group);
+    }
+  }
+
+  // 1. Render Past Posts Drawer (COLLAPSED by default - NOT visible in chiaro)
+  if (pastGroups.length > 0) {
+    const pastItemsCount = pastGroups.reduce((acc, g) => acc + g.items.length, 0);
+    const drawerEl = document.createElement("details");
+    drawerEl.className = "timeline-past-drawer";
+    drawerEl.innerHTML = `
+      <summary class="timeline-past-summary">
+        <span>📁</span>
+        <span>Archivio Post Passati</span>
+        <span class="past-summary-badge">${pastItemsCount} post</span>
+        <span class="past-summary-hint">Mostra ▾</span>
+      </summary>
+      <div class="timeline-past-content"></div>
     `;
-    groupEl.appendChild(headerEl);
 
-    const cardsListEl = document.createElement("div");
-    cardsListEl.className = "timeline-cards-list";
-
-    for (const item of groupItems) {
-      const cardWrapper = document.createElement("div");
-      cardWrapper.className = `timeline-card-wrapper ${item.flowStatus.toLowerCase()}`;
-      cardWrapper.dataset.postId = item.rawId;
-
-      const card = document.createElement("div");
-      card.className = `timeline-card flow-${item.flowStatus.toLowerCase()}`;
-
-      // 1. Header
-      const header = document.createElement("div");
-      header.className = "timeline-card-header";
-
-      const badgesLeft = document.createElement("div");
-      badgesLeft.className = "timeline-badges-left";
-
-      const isIg = (item.platform || "").toLowerCase().includes("instagram");
-      const isFb = (item.platform || "").toLowerCase().includes("facebook");
-      const isTikTok = (item.platform || "").toLowerCase().includes("tiktok");
-      const isLinkedIn = (item.platform || "").toLowerCase().includes("linkedin");
-      const isGmb = (item.platform || "").toLowerCase().includes("google") || (item.platform || "").toLowerCase().includes("business");
-      const isTwitter = (item.platform || "").toLowerCase().includes("twit") || (item.platform || "").toLowerCase().includes("x ");
-
-      const platformPill = document.createElement("span");
-      let icon = "📱";
-      if (item.isMetaCompatible) {
-        if (isFb && isIg) {
-          platformPill.className = "timeline-platform-pill fb";
-          platformPill.textContent = "📘 FB + 📸 IG";
-          icon = "📘";
-        } else if (isFb) {
-          platformPill.className = "timeline-platform-pill fb";
-          platformPill.textContent = "📘 FB";
-          icon = "📘";
-        } else {
-          platformPill.className = "timeline-platform-pill ig";
-          platformPill.textContent = "📸 IG";
-          icon = "📸";
-        }
-      } else {
-        if (isTikTok) {
-          platformPill.className = "timeline-platform-pill tiktok";
-          platformPill.textContent = "🎵 TikTok";
-          icon = "🎵";
-        } else if (isLinkedIn) {
-          platformPill.className = "timeline-platform-pill linkedin";
-          platformPill.textContent = "💼 LinkedIn";
-          icon = "💼";
-        } else if (isGmb) {
-          platformPill.className = "timeline-platform-pill googlebusiness";
-          platformPill.textContent = "📍 GMB";
-          icon = "📍";
-        } else if (isTwitter) {
-          platformPill.className = "timeline-platform-pill twitter";
-          platformPill.textContent = "🐦 Twitter";
-          icon = "🐦";
-        } else {
-          platformPill.className = "timeline-platform-pill external";
-          platformPill.textContent = `🌐 ${item.platform}`;
-          icon = "🌐";
-        }
-      }
-      badgesLeft.appendChild(platformPill);
-
-      const timeBadge = document.createElement("span");
-      timeBadge.className = "timeline-time-badge";
-      timeBadge.textContent = formatTimeOnly(item.effectiveDate) || "Schedulato";
-      badgesLeft.appendChild(timeBadge);
-
-      if (item.projectName) {
-        const projBadge = document.createElement("span");
-        projBadge.className = "badge-tag";
-        projBadge.style.fontSize = "0.70rem";
-        projBadge.style.padding = "2px 6px";
-        projBadge.textContent = item.projectName;
-        badgesLeft.appendChild(projBadge);
-      }
-
-      header.appendChild(badgesLeft);
-
-      // Status Pill Right
-      const statusPill = document.createElement("span");
-      if (!item.isMetaCompatible) {
-        statusPill.className = "timeline-status-badge external";
-        statusPill.innerHTML = `⚪ Canale Esterno`;
-        statusPill.title = `Questo post è programmato su ${item.platform}. Meta Ads supporta solo post di Facebook e Instagram.`;
-      } else if (item.flowStatus === "SPONSORED") {
-        statusPill.className = "timeline-status-badge sponsored";
-        statusPill.innerHTML = `🚀 ADV Attiva`;
-      } else if (item.flowStatus === "INCLUDED") {
-        statusPill.className = "timeline-status-badge included";
-        statusPill.innerHTML = `🟢 Nel Flow`;
-      } else {
-        statusPill.className = "timeline-status-badge excluded";
-        statusPill.innerHTML = `⚪ Escluso`;
-      }
-      header.appendChild(statusPill);
-      card.appendChild(header);
-
-      // 2. Body: media + preview
-      const body = document.createElement("div");
-      body.className = "timeline-card-body";
-
-      const mediaBox = document.createElement("div");
-      mediaBox.className = "timeline-media-box";
-      if (item.images && item.images.length > 0) {
-        const img = document.createElement("img");
-        img.src = item.images[0];
-        img.alt = "Anteprima";
-        img.loading = "lazy";
-        img.onerror = () => {
-          mediaBox.innerHTML = `<span class="timeline-media-placeholder">${icon}</span>`;
-        };
-        mediaBox.appendChild(img);
-      } else {
-        mediaBox.innerHTML = `<span class="timeline-media-placeholder">${icon}</span>`;
-      }
-      body.appendChild(mediaBox);
-
-      const contentBox = document.createElement("div");
-      contentBox.className = "timeline-content-box";
-
-      const caption = document.createElement("p");
-      caption.className = "timeline-caption-text";
-      caption.textContent = item.text || "(Nessun testo / media caption)";
-      caption.title = item.text || "";
-      contentBox.appendChild(caption);
-
-      const targetPill = document.createElement("div");
-      targetPill.className = "timeline-destination-pill";
-      if (!item.isMetaCompatible) {
-        targetPill.innerHTML = `<span class="dest-icon">${icon}</span> Pubblie: <strong>${escapeHtml(item.channelName || item.platform)}</strong> <small style="color: var(--text-dim);">(Solo organico)</small>`;
-      } else if (item.mapping) {
-        const campName = item.mapping.campaign_name || item.mapping.campaign_id;
-        const adsetName = item.mapping.adset_name || item.mapping.adset_id;
-        targetPill.title = `Campagna: ${campName} | Gruppo: ${adsetName}`;
-        targetPill.innerHTML = `<span class="dest-icon">🎯</span> Meta: <strong>${escapeHtml(adsetName || campName)}</strong>`;
-      } else {
-        targetPill.innerHTML = `<span style="color: var(--accent-amber);">⚠️ Nessun target Meta</span> • <a href="#" class="configure-mapping-link" style="color: var(--accent-emerald); text-decoration: underline;">Associa</a>`;
-        targetPill.querySelector(".configure-mapping-link")?.addEventListener("click", (e) => {
-          e.preventDefault();
-          openPubblieConfigModal("mapping");
-        });
-      }
-      contentBox.appendChild(targetPill);
-
-      body.appendChild(contentBox);
-      card.appendChild(body);
-
-      // 3. Footer / Decision Switch
-      const footer = document.createElement("div");
-      footer.className = "timeline-card-footer";
-
-      if (!item.isMetaCompatible) {
-        const nonMetaNote = document.createElement("span");
-        nonMetaNote.style.fontSize = "0.78rem";
-        nonMetaNote.style.color = "var(--text-dim)";
-        nonMetaNote.title = "Questo post è destinato a un canale non Meta. Le campagne pubblicitarie Meta Ads supportano solo Facebook e Instagram.";
-        nonMetaNote.innerHTML = `${icon} Canale <strong>${escapeHtml(item.platform)}</strong> (Non sponsorizzabile su Meta Ads)`;
-        footer.appendChild(nonMetaNote);
-      } else if (item.flowStatus !== "SPONSORED") {
-        const flowToggleWrapper = document.createElement("label");
-        flowToggleWrapper.className = "flow-toggle-wrapper";
-        flowToggleWrapper.title = "Attiva per sponsorizzare automaticamente questo post o disattiva per escluderlo";
-
-        const isChecked = item.flowStatus === "INCLUDED";
-        flowToggleWrapper.innerHTML = `
-          <input type="checkbox" class="flow-toggle-checkbox" ${isChecked ? "checked" : ""}>
-          <span class="flow-toggle-switch"></span>
-          <span class="flow-toggle-label">${isChecked ? "Sponsorizza Post" : "Non Sponsorizzare"}</span>
-        `;
-
-        const checkbox = flowToggleWrapper.querySelector(".flow-toggle-checkbox");
-        checkbox.addEventListener("change", () => {
-          flowToggleWrapper.querySelector(".flow-toggle-label").textContent = checkbox.checked ? "Sponsorizza Post" : "Non Sponsorizzare";
-          togglePostFlow(item.rawId, checkbox.checked);
-        });
-
-        footer.appendChild(flowToggleWrapper);
-      } else {
-        const sponsoredNote = document.createElement("span");
-        sponsoredNote.style.fontSize = "0.78rem";
-        sponsoredNote.style.color = "var(--accent-blue)";
-        sponsoredNote.style.fontWeight = "600";
-        sponsoredNote.innerHTML = `✓ ADV Meta Creata ${item.adId ? `(${item.adId.slice(-6)})` : ""}`;
-        footer.appendChild(sponsoredNote);
-      }
-
-      const actions = document.createElement("div");
-      actions.className = "timeline-card-actions";
-
-      if (item.isMetaCompatible && item.flowStatus !== "SPONSORED" && item.mapping) {
-        const sponsorNowBtn = document.createElement("button");
-        sponsorNowBtn.type = "button";
-        sponsorNowBtn.className = "btn btn-secondary btn-xs";
-        sponsorNowBtn.innerHTML = `⚡ Ora`;
-        sponsorNowBtn.title = "Crea subito l'inserzione su Meta Ads per questo post";
-        sponsorNowBtn.addEventListener("click", () => sponsorTimelinePostNow(item));
-        actions.appendChild(sponsorNowBtn);
-      }
-
-      if (item.link) {
-        const openLink = document.createElement("a");
-        openLink.href = item.link;
-        openLink.target = "_blank";
-        openLink.rel = "noopener noreferrer";
-        openLink.className = "btn btn-ghost btn-xs";
-        openLink.innerHTML = `🔗 Post`;
-        actions.appendChild(openLink);
-      }
-
-      footer.appendChild(actions);
-      card.appendChild(footer);
-
-      cardWrapper.appendChild(card);
-      cardsListEl.appendChild(cardWrapper);
+    const pastContentEl = drawerEl.querySelector(".timeline-past-content");
+    for (const group of pastGroups) {
+      const groupEl = createDateGroupElement(group.info, group.items, true);
+      pastContentEl.appendChild(groupEl);
     }
 
-    groupEl.appendChild(cardsListEl);
+    container.appendChild(drawerEl);
+  }
+
+  // 2. Render Active Groups (Today + Future) directly in plain view
+  for (const group of activeGroups) {
+    const groupEl = createDateGroupElement(group.info, group.items, false);
     container.appendChild(groupEl);
   }
+}
+
+function createDateGroupElement(info, groupItems, isPast = false) {
+  const groupEl = document.createElement("div");
+  groupEl.className = `timeline-date-group ${isPast ? "is-past" : ""}`;
+  if (info.isToday) groupEl.dataset.isToday = "true";
+
+  // Milestone Header
+  const headerEl = document.createElement("div");
+  headerEl.className = `timeline-date-header ${info.isToday ? "is-today" : ""}`;
+  headerEl.title = info.fullDate || info.badgeText;
+  headerEl.innerHTML = `
+    <span class="date-milestone-marker"></span>
+    <div class="date-title-box">
+      <span>${info.isToday ? "🟢" : (isPast ? "📁" : "📅")}</span>
+      <span>${escapeHtml(info.badgeText)}</span>
+    </div>
+    <span class="date-badge-count">${groupItems.length} post</span>
+  `;
+  groupEl.appendChild(headerEl);
+
+  const cardsListEl = document.createElement("div");
+  cardsListEl.className = "timeline-cards-list";
+
+  for (const item of groupItems) {
+    const cardWrapper = buildTimelineCard(item);
+    cardsListEl.appendChild(cardWrapper);
+  }
+
+  groupEl.appendChild(cardsListEl);
+  return groupEl;
+}
+
+function buildTimelineCard(item) {
+  const cardWrapper = document.createElement("div");
+  cardWrapper.className = `timeline-card-wrapper ${item.flowStatus.toLowerCase()}`;
+  cardWrapper.dataset.postId = item.rawId;
+
+  const card = document.createElement("div");
+  card.className = `timeline-card flow-${item.flowStatus.toLowerCase()}`;
+
+  // 1. Header
+  const header = document.createElement("div");
+  header.className = "timeline-card-header";
+
+  const badgesLeft = document.createElement("div");
+  badgesLeft.className = "timeline-badges-left";
+
+  const isIg = (item.platform || "").toLowerCase().includes("instagram");
+  const isFb = (item.platform || "").toLowerCase().includes("facebook");
+  const isTikTok = (item.platform || "").toLowerCase().includes("tiktok");
+  const isLinkedIn = (item.platform || "").toLowerCase().includes("linkedin");
+  const isGmb = (item.platform || "").toLowerCase().includes("google") || (item.platform || "").toLowerCase().includes("business");
+  const isTwitter = (item.platform || "").toLowerCase().includes("twit") || (item.platform || "").toLowerCase().includes("x ");
+
+  const platformPill = document.createElement("span");
+  let icon = "📱";
+  if (item.isMetaCompatible) {
+    if (isFb && isIg) {
+      platformPill.className = "timeline-platform-pill fb";
+      platformPill.textContent = "📘 FB + 📸 IG";
+      icon = "📘";
+    } else if (isFb) {
+      platformPill.className = "timeline-platform-pill fb";
+      platformPill.textContent = "📘 FB";
+      icon = "📘";
+    } else {
+      platformPill.className = "timeline-platform-pill ig";
+      platformPill.textContent = "📸 IG";
+      icon = "📸";
+    }
+  } else {
+    if (isTikTok) {
+      platformPill.className = "timeline-platform-pill tiktok";
+      platformPill.textContent = "🎵 TikTok";
+      icon = "🎵";
+    } else if (isLinkedIn) {
+      platformPill.className = "timeline-platform-pill linkedin";
+      platformPill.textContent = "💼 LinkedIn";
+      icon = "💼";
+    } else if (isGmb) {
+      platformPill.className = "timeline-platform-pill googlebusiness";
+      platformPill.textContent = "📍 GMB";
+      icon = "📍";
+    } else if (isTwitter) {
+      platformPill.className = "timeline-platform-pill twitter";
+      platformPill.textContent = "🐦 Twitter";
+      icon = "🐦";
+    } else {
+      platformPill.className = "timeline-platform-pill external";
+      platformPill.textContent = `🌐 ${item.platform}`;
+      icon = "🌐";
+    }
+  }
+  badgesLeft.appendChild(platformPill);
+
+  const timeBadge = document.createElement("span");
+  timeBadge.className = "timeline-time-badge";
+  timeBadge.textContent = formatTimeOnly(item.effectiveDate) || "Schedulato";
+  badgesLeft.appendChild(timeBadge);
+
+  if (item.projectName) {
+    const projBadge = document.createElement("span");
+    projBadge.className = "timeline-project-chip";
+    projBadge.textContent = item.projectName;
+    projBadge.title = item.projectName;
+    badgesLeft.appendChild(projBadge);
+  }
+
+  header.appendChild(badgesLeft);
+
+  // Status Pill Right
+  const statusPill = document.createElement("span");
+  if (!item.isMetaCompatible) {
+    statusPill.className = "timeline-status-badge external";
+    statusPill.innerHTML = `⚪ Canale Esterno`;
+    statusPill.title = `Questo post è programmato su ${item.platform}. Meta Ads supporta solo post di Facebook e Instagram.`;
+  } else if (item.flowStatus === "SPONSORED") {
+    statusPill.className = "timeline-status-badge sponsored";
+    statusPill.innerHTML = `🚀 ADV Attiva`;
+  } else if (item.flowStatus === "INCLUDED") {
+    statusPill.className = "timeline-status-badge included";
+    statusPill.innerHTML = `🟢 Nel Flow`;
+  } else {
+    statusPill.className = "timeline-status-badge excluded";
+    statusPill.innerHTML = `⚪ Escluso`;
+  }
+  header.appendChild(statusPill);
+  card.appendChild(header);
+
+  // 2. Body: media + preview
+  const body = document.createElement("div");
+  body.className = "timeline-card-body";
+
+  const mediaBox = document.createElement("div");
+  mediaBox.className = "timeline-media-box";
+  if (item.images && item.images.length > 0) {
+    const img = document.createElement("img");
+    img.src = item.images[0];
+    img.alt = "Anteprima";
+    img.loading = "lazy";
+    img.onerror = () => {
+      mediaBox.innerHTML = `<span class="timeline-media-placeholder">${icon}</span>`;
+    };
+    mediaBox.appendChild(img);
+  } else {
+    mediaBox.innerHTML = `<span class="timeline-media-placeholder">${icon}</span>`;
+  }
+  body.appendChild(mediaBox);
+
+  const contentBox = document.createElement("div");
+  contentBox.className = "timeline-content-box";
+
+  const caption = document.createElement("p");
+  caption.className = "timeline-caption-text";
+  caption.textContent = item.text || "(Nessun testo / media caption)";
+  caption.title = item.text || "";
+  contentBox.appendChild(caption);
+
+  const targetPill = document.createElement("div");
+  targetPill.className = "timeline-destination-pill";
+  if (!item.isMetaCompatible) {
+    targetPill.innerHTML = `<span class="dest-icon">${icon}</span> Pubblie: <strong>${escapeHtml(item.channelName || item.platform)}</strong> <small style="color: var(--text-dim);">(Solo organico)</small>`;
+  } else if (item.mapping) {
+    const campName = item.mapping.campaign_name || item.mapping.campaign_id;
+    const adsetName = item.mapping.adset_name || item.mapping.adset_id;
+    targetPill.title = `Campagna: ${campName} | Gruppo: ${adsetName}`;
+    targetPill.innerHTML = `<span class="dest-icon">🎯</span> Meta: <strong>${escapeHtml(adsetName || campName)}</strong>`;
+  } else {
+    targetPill.innerHTML = `<span style="color: var(--accent-amber);">⚠️ Nessun target Meta</span> • <a href="#" class="configure-mapping-link" style="color: var(--accent-emerald); text-decoration: underline;">Associa</a>`;
+    targetPill.querySelector(".configure-mapping-link")?.addEventListener("click", (e) => {
+      e.preventDefault();
+      openPubblieConfigModal("mapping");
+    });
+  }
+  contentBox.appendChild(targetPill);
+
+  body.appendChild(contentBox);
+  card.appendChild(body);
+
+  // 3. Footer / Decision Button
+  const footer = document.createElement("div");
+  footer.className = "timeline-card-footer";
+
+  if (!item.isMetaCompatible) {
+    const nonMetaNote = document.createElement("span");
+    nonMetaNote.style.fontSize = "0.72rem";
+    nonMetaNote.style.color = "var(--text-dim)";
+    nonMetaNote.title = "Questo post è destinato a un canale non Meta. Le campagne pubblicitarie Meta Ads supportano solo Facebook e Instagram.";
+    nonMetaNote.innerHTML = `${icon} <strong>${escapeHtml(item.platform)}</strong> (Solo organico)`;
+    footer.appendChild(nonMetaNote);
+  } else if (item.flowStatus !== "SPONSORED") {
+    const isIncluded = item.flowStatus === "INCLUDED";
+    const flowToggleBtn = document.createElement("button");
+    flowToggleBtn.type = "button";
+    flowToggleBtn.className = `btn-flow-toggle ${isIncluded ? "is-included" : "is-excluded"}`;
+    flowToggleBtn.title = isIncluded ? "Clicca per escludere dal Flow" : "Clicca per sponsorizzare con Meta Ads";
+    flowToggleBtn.innerHTML = isIncluded ? `✓ Nel Flow` : `✕ Non Sponsorizzare`;
+
+    flowToggleBtn.addEventListener("click", () => {
+      const willBeIncluded = !flowToggleBtn.classList.contains("is-included");
+      togglePostFlow(item.rawId, willBeIncluded);
+    });
+
+    footer.appendChild(flowToggleBtn);
+  } else {
+    const sponsoredNote = document.createElement("span");
+    sponsoredNote.style.fontSize = "0.74rem";
+    sponsoredNote.style.color = "var(--accent-blue)";
+    sponsoredNote.style.fontWeight = "700";
+    sponsoredNote.innerHTML = `✓ ADV Meta Creata ${item.adId ? `(${item.adId.slice(-6)})` : ""}`;
+    footer.appendChild(sponsoredNote);
+  }
+
+  const actions = document.createElement("div");
+  actions.className = "timeline-card-actions";
+
+  if (item.isMetaCompatible && item.flowStatus !== "SPONSORED" && item.mapping) {
+    const sponsorNowBtn = document.createElement("button");
+    sponsorNowBtn.type = "button";
+    sponsorNowBtn.className = "btn btn-secondary btn-xs";
+    sponsorNowBtn.innerHTML = `⚡ Ora`;
+    sponsorNowBtn.title = "Crea subito l'inserzione su Meta Ads per questo post";
+    sponsorNowBtn.addEventListener("click", () => sponsorTimelinePostNow(item));
+    actions.appendChild(sponsorNowBtn);
+  }
+
+  if (item.link) {
+    const openLink = document.createElement("a");
+    openLink.href = item.link;
+    openLink.target = "_blank";
+    openLink.rel = "noopener noreferrer";
+    openLink.className = "btn btn-ghost btn-xs";
+    openLink.innerHTML = `🔗 Post`;
+    actions.appendChild(openLink);
+  }
+
+  footer.appendChild(actions);
+  card.appendChild(footer);
+
+  cardWrapper.appendChild(card);
+  return cardWrapper;
 }
 
 async function togglePostFlow(postId, included) {
@@ -2494,13 +2535,11 @@ async function togglePostFlow(postId, included) {
       statusPill.className = `timeline-status-badge ${newStatus.toLowerCase()}`;
       statusPill.innerHTML = included ? `🟢 Nel Flow` : `⚪ Escluso`;
     }
-    const toggleLabel = wrapper.querySelector(".flow-toggle-label");
-    if (toggleLabel) {
-      toggleLabel.textContent = included ? "Sponsorizza Post" : "Non Sponsorizzare";
-    }
-    const checkbox = wrapper.querySelector(".flow-toggle-checkbox");
-    if (checkbox && checkbox.checked !== included) {
-      checkbox.checked = included;
+    const toggleBtn = wrapper.querySelector(".btn-flow-toggle");
+    if (toggleBtn) {
+      toggleBtn.className = `btn-flow-toggle ${included ? "is-included" : "is-excluded"}`;
+      toggleBtn.innerHTML = included ? `✓ Nel Flow` : `✕ Non Sponsorizzare`;
+      toggleBtn.title = included ? "Clicca per escludere dal Flow" : "Clicca per sponsorizzare con Meta Ads";
     }
   }
 
