@@ -700,7 +700,24 @@ async function handleApi(req, res, url) {
 
     if (url.pathname === "/api/pubblie/projects" && req.method === "GET") {
       const projects = await pubblieService.listProjects();
-      return json(res, 200, { ok: true, data: projects });
+      const rawArchived = await db.getSetting("archived_pubblie_projects");
+      let archivedProjectIds = [];
+      try { archivedProjectIds = rawArchived ? JSON.parse(rawArchived) : []; } catch {}
+      return json(res, 200, { ok: true, data: projects, archivedProjectIds });
+    }
+
+    if (url.pathname === "/api/pubblie/archived-projects" && req.method === "GET") {
+      const raw = await db.getSetting("archived_pubblie_projects");
+      let archivedProjectIds = [];
+      try { archivedProjectIds = raw ? JSON.parse(raw) : []; } catch {}
+      return json(res, 200, { ok: true, archivedProjectIds });
+    }
+
+    if (url.pathname === "/api/pubblie/archived-projects" && req.method === "POST") {
+      const body = await readJsonBody(req);
+      const archivedProjectIds = Array.isArray(body.archivedProjectIds) ? body.archivedProjectIds : [];
+      await db.setSetting("archived_pubblie_projects", JSON.stringify(archivedProjectIds));
+      return json(res, 200, { ok: true, archivedProjectIds });
     }
 
     const pubblieChannelsMatch = url.pathname.match(/^\/api\/pubblie\/projects\/([^\/]+)\/channels$/);
@@ -742,6 +759,10 @@ async function handleApi(req, res, url) {
       const filterStatus = url.searchParams.get("status") || "";
       const daysAhead = Number(url.searchParams.get("days") || 30);
 
+      const rawArchived = await db.getSetting("archived_pubblie_projects");
+      let archivedProjectIds = [];
+      try { archivedProjectIds = rawArchived ? JSON.parse(rawArchived) : []; } catch {}
+
       const mappings = await db.getPubblieMappings();
       const decisions = await db.getTimelineDecisions();
       const processedPosts = await db.getProcessedPosts(100);
@@ -753,33 +774,89 @@ async function handleApi(req, res, url) {
 
       if (pubblieService.getApiKey()) {
         try {
+          const allUserProjects = await pubblieService.listProjects().catch(() => []);
+          const projectMap = new Map(allUserProjects.map(p => [p.id, p]));
+
           let projectIds = [];
           if (filterProjectId) {
             projectIds = [filterProjectId];
           } else if (mappings.length > 0) {
-            projectIds = [...new Set(mappings.map(m => m.project_id))];
+            projectIds = [...new Set(mappings.map(m => m.project_id))].filter(id => !archivedProjectIds.includes(id));
           } else {
-            const userProjects = await pubblieService.listProjects();
-            projectIds = userProjects.map(p => p.id).slice(0, 6);
+            projectIds = allUserProjects
+              .map(p => p.id)
+              .filter(id => !archivedProjectIds.includes(id))
+              .slice(0, 10);
           }
 
           for (const pId of projectIds) {
             try {
-              const posts = await pubblieService.listProjectPosts(pId, { dateFrom: fromDate, dateTo: toDate });
+              const [posts, projectChannels] = await Promise.all([
+                pubblieService.listProjectPosts(pId, { dateFrom: fromDate, dateTo: toDate }),
+                pubblieService.listProjectChannels(pId).catch(() => [])
+              ]);
               const mappedChannels = mappings.filter(m => m.project_id === pId);
+              const projectObj = projectMap.get(pId);
+              const projectNameFallback = projectObj ? `${projectObj.name}${projectObj.teamName ? ` (${projectObj.teamName})` : ""}` : `Progetto ${pId}`;
 
               for (const p of posts) {
+                // Enrich accounts with project channel info
+                const enrichedAccounts = (p.accounts || []).map(acc => {
+                  const prov = (acc.provider || "").toLowerCase().trim();
+                  const ch = (projectChannels || []).find(c =>
+                    (acc.accountName && c.name && c.name.toLowerCase() === acc.accountName.toLowerCase()) ||
+                    (prov && c.provider && c.provider.toLowerCase() === prov && acc.accountName && c.accountUsername && c.accountUsername.toLowerCase() === acc.accountName.toLowerCase()) ||
+                    (acc.channelId && c.id === acc.channelId)
+                  );
+                  return {
+                    provider: ch?.provider || prov,
+                    accountName: ch?.name || acc.accountName || "",
+                    channelId: ch ? ch.id : (acc.channelId || "")
+                  };
+                });
+
+                const postProviders = enrichedAccounts.map(a => (a.provider || "").toLowerCase());
+                const postChannelIds = enrichedAccounts.map(a => a.channelId).filter(Boolean);
+                const hasFacebook = postProviders.some(pr => pr.includes("face"));
+                const hasInstagram = postProviders.some(pr => pr.includes("insta"));
+                const isMetaCompatible = hasFacebook || hasInstagram || (postProviders.length === 0 && Boolean(mappedChannels.length));
+
                 let matchingMapping = null;
-                if (p.channelIds && p.channelIds.length) {
-                  matchingMapping = mappedChannels.find(m => p.channelIds.includes(m.channel_id));
-                }
-                if (!matchingMapping && mappedChannels.length) {
-                  matchingMapping = mappedChannels[0];
+                if (isMetaCompatible) {
+                  if (postChannelIds.length) {
+                    matchingMapping = mappedChannels.find(m => postChannelIds.includes(m.channel_id));
+                  }
+                  if (!matchingMapping && hasFacebook) {
+                    matchingMapping = mappedChannels.find(m => m.channel_provider?.toLowerCase().includes("face"));
+                  }
+                  if (!matchingMapping && hasInstagram) {
+                    matchingMapping = mappedChannels.find(m => m.channel_provider?.toLowerCase().includes("insta"));
+                  }
+                  if (!matchingMapping && mappedChannels.length === 1) {
+                    matchingMapping = mappedChannels[0];
+                  }
                 }
 
                 let platform = "Instagram";
-                if (matchingMapping) {
-                  platform = matchingMapping.channel_provider?.toLowerCase().includes("face") ? "Facebook" : "Instagram";
+                let primaryProvider = "instagram";
+                if (isMetaCompatible) {
+                  if (hasFacebook && hasInstagram) {
+                    platform = "Meta (FB+IG)";
+                    primaryProvider = "facebook";
+                  } else if (hasFacebook) {
+                    platform = "Facebook";
+                    primaryProvider = "facebook";
+                  } else {
+                    platform = "Instagram";
+                    primaryProvider = "instagram";
+                  }
+                } else {
+                  primaryProvider = postProviders[0] || "other";
+                  if (primaryProvider.includes("tiktok")) platform = "TikTok";
+                  else if (primaryProvider.includes("link")) platform = "LinkedIn";
+                  else if (primaryProvider.includes("google") || primaryProvider.includes("business")) platform = "Google Business";
+                  else if (primaryProvider.includes("twit") || primaryProvider === "x") platform = "X (Twitter)";
+                  else platform = primaryProvider ? primaryProvider.charAt(0).toUpperCase() + primaryProvider.slice(1) : "Social Esterno";
                 }
 
                 const postDate = p.scheduleDateTime || p.publishedAt || now.toISOString();
@@ -788,7 +865,11 @@ async function handleApi(req, res, url) {
                 let decision = decisions[p.id];
                 let flowStatus = decision?.sponsorship_status;
                 if (!flowStatus) {
-                  flowStatus = matchingMapping ? (matchingMapping.auto_sponsor_on_publish ? "INCLUDED" : "EXCLUDED") : "INCLUDED";
+                  if (isMetaCompatible) {
+                    flowStatus = matchingMapping ? (matchingMapping.auto_sponsor_on_publish ? "INCLUDED" : "EXCLUDED") : "INCLUDED";
+                  } else {
+                    flowStatus = "EXTERNAL";
+                  }
                 }
 
                 const isAlreadyProcessed = processedPosts.find(pp => pp.post_id === p.id);
@@ -796,15 +877,23 @@ async function handleApi(req, res, url) {
                   flowStatus = "SPONSORED";
                 }
 
+                const channelName = matchingMapping?.channel_name ||
+                  enrichedAccounts.find(a => a.accountName)?.accountName ||
+                  p.channelIds?.[0] || "";
+
                 items.push({
                   id: `pub_${p.id}`,
                   rawId: p.id,
                   source: "pubblie",
                   platform,
+                  primaryProvider,
+                  providers: postProviders,
+                  isMetaCompatible,
                   projectId: pId,
-                  projectName: matchingMapping?.project_name || `Progetto ${pId}`,
-                  channelIds: p.channelIds,
-                  channelName: matchingMapping?.channel_name || "",
+                  projectName: matchingMapping?.project_name || projectNameFallback,
+                  channelIds: postChannelIds.length ? postChannelIds : p.channelIds,
+                  channelName,
+                  accounts: enrichedAccounts,
                   text: p.text || "",
                   images: p.images || [],
                   videoIds: p.videoIds || [],
@@ -836,6 +925,9 @@ async function handleApi(req, res, url) {
             rawId: pp.post_id,
             source: "meta",
             platform: pp.platform || "Instagram",
+            primaryProvider: (pp.platform || "Instagram").toLowerCase(),
+            providers: [(pp.platform || "Instagram").toLowerCase()],
+            isMetaCompatible: true,
             projectId: "",
             projectName: "Meta Ads",
             channelIds: [pp.source_id],
@@ -861,9 +953,23 @@ async function handleApi(req, res, url) {
       items.sort((a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime());
 
       let filtered = items;
-      if (filterPlatform) {
-        filtered = filtered.filter(i => i.platform.toLowerCase() === filterPlatform.toLowerCase());
+      if (filterPlatform && filterPlatform !== "all") {
+        if (filterPlatform === "meta") {
+          filtered = filtered.filter(i => i.isMetaCompatible);
+        } else if (filterPlatform === "other") {
+          filtered = filtered.filter(i => !i.isMetaCompatible);
+        } else if (filterPlatform.toLowerCase() === "facebook") {
+          filtered = filtered.filter(i => (i.providers || []).some(p => p.includes("face")) || i.platform.toLowerCase() === "facebook");
+        } else if (filterPlatform.toLowerCase() === "instagram") {
+          filtered = filtered.filter(i => (i.providers || []).some(p => p.includes("insta")) || i.platform.toLowerCase() === "instagram");
+        } else {
+          filtered = filtered.filter(i => i.platform.toLowerCase() === filterPlatform.toLowerCase());
+        }
+      } else if (!filterPlatform) {
+        // Default to Meta-compatible posts only, to avoid cluttering the flow with LinkedIn/TikTok/GMB posts
+        filtered = filtered.filter(i => i.isMetaCompatible);
       }
+
       if (filterChannelId) {
         filtered = filtered.filter(i => (i.channelIds || []).includes(filterChannelId) || i.channelName === filterChannelId);
       }
@@ -876,11 +982,12 @@ async function handleApi(req, res, url) {
       }
 
       const stats = {
-        total: items.length,
-        upcomingCount: items.filter(i => i.isFuture).length,
-        includedCount: items.filter(i => i.flowStatus === "INCLUDED").length,
-        excludedCount: items.filter(i => i.flowStatus === "EXCLUDED").length,
-        sponsoredCount: items.filter(i => i.flowStatus === "SPONSORED").length,
+        total: filtered.length,
+        upcomingCount: filtered.filter(i => i.isFuture).length,
+        includedCount: filtered.filter(i => i.flowStatus === "INCLUDED").length,
+        excludedCount: filtered.filter(i => i.flowStatus === "EXCLUDED").length,
+        sponsoredCount: filtered.filter(i => i.flowStatus === "SPONSORED").length,
+        externalCount: filtered.filter(i => !i.isMetaCompatible).length,
         mappingsCount: mappings.length
       };
 

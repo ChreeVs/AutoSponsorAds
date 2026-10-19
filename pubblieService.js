@@ -4,10 +4,12 @@ class PubblieService {
   constructor(env = {}) {
     this.apiKey = env.PUBBLIE_API_KEY || "";
     this.baseUrl = "https://pubblie.io";
+    this.cache = new Map();
   }
 
   setApiKey(key) {
     this.apiKey = (key || "").trim();
+    this.cache.clear();
   }
 
   getApiKey() {
@@ -99,7 +101,13 @@ class PubblieService {
    * Lists all projects accessible with the API key
    * Endpoint: GET /api/v1/projects
    */
-  async listProjects(apiKey) {
+  async listProjects(apiKey, force = false) {
+    const cacheKey = `projects_${apiKey || this.apiKey}`;
+    const cached = this.cache.get(cacheKey);
+    if (!force && cached && Date.now() - cached.time < 60000) {
+      return cached.data;
+    }
+
     const raw = await this.request("/api/v1/projects", { apiKey });
     
     // Pubblie returns an array of team groups: [ { teamId, teamName, projects: [ ... ] } ]
@@ -132,24 +140,33 @@ class PubblieService {
       }
     }
 
-    return list.map(p => ({
+    const result = list.map(p => ({
       id: String(p.id || p.projectId),
       name: p.name || p.title || `Progetto ${p.id}`,
       description: p.description || "",
       teamName: p.teamName || p.team?.name || ""
     }));
+
+    this.cache.set(cacheKey, { time: Date.now(), data: result });
+    return result;
   }
 
   /**
    * Lists social channels for a project
    * Endpoint: GET /api/v1/projects/{projectId}/channels
    */
-  async listProjectChannels(projectId, apiKey) {
+  async listProjectChannels(projectId, apiKey, force = false) {
     if (!projectId) throw new Error("projectId mancante");
+    const cacheKey = `channels_${projectId}_${apiKey || this.apiKey}`;
+    const cached = this.cache.get(cacheKey);
+    if (!force && cached && Date.now() - cached.time < 60000) {
+      return cached.data;
+    }
+
     const raw = await this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/channels`, { apiKey });
     
     const items = Array.isArray(raw) ? raw : (raw.data || raw.channels || []);
-    return items.map(c => ({
+    const result = items.map(c => ({
       id: String(c.id || c.channelId),
       name: c.name || c.title || c.username || c.accountName || "Canale Social",
       provider: (c.provider || c.type || c.platform || "").toLowerCase(), // 'facebook', 'instagram', 'instagram-direct', 'youtube', etc.
@@ -157,6 +174,9 @@ class PubblieService {
       accountUsername: c.username || c.screenName || "",
       isDirectPublish: Boolean(c.isDirectPublish ?? true)
     }));
+
+    this.cache.set(cacheKey, { time: Date.now(), data: result });
+    return result;
   }
 
   /**
@@ -189,10 +209,10 @@ class PubblieService {
     const items = Array.isArray(raw) ? raw : (raw.data || raw.posts || []);
     const normalized = items.map(p => this.normalizePost(p, projectId));
 
-    // Fast detail enrichment for upcoming posts to extract S3 image thumbnails
-    const needImages = normalized.filter(p => (!p.images || p.images.length === 0) && (p.imageCount > 0 || p.hasMedia)).slice(0, 15);
+    // Fast detail enrichment for upcoming posts to extract S3 image thumbnails (max 5 posts sequentially to avoid 429)
+    const needImages = normalized.filter(p => (!p.images || p.images.length === 0) && (p.imageCount > 0 || p.hasMedia)).slice(0, 5);
     if (needImages.length > 0) {
-      await Promise.allSettled(needImages.map(async (post) => {
+      for (const post of needImages) {
         try {
           const detail = await this.getPostDetails(post.id, apiKey);
           if (detail && detail.images && detail.images.length) {
@@ -201,7 +221,7 @@ class PubblieService {
         } catch {
           // ignore individual fetch errors
         }
-      }));
+      }
     }
 
     return normalized;

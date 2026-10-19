@@ -254,18 +254,25 @@
         <!-- Timeline Filters & Actions Bar -->
         <div class="timeline-controls-bar">
           <div class="timeline-filter-group">
-            <label class="filter-label" for="timelineFilterProject">Progetto:</label>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 2px;">
+              <label class="filter-label" for="timelineFilterProject" style="margin-bottom: 0;">Progetto:</label>
+              <button type="button" class="btn btn-ghost btn-xs" id="managePubblieProjectsBtn" title="Archivia o ripristina progetti Pubblie" style="padding: 1px 6px; font-size: 0.72rem; color: var(--accent-emerald);">
+                📁 Archivia (<span id="archivedProjectsCountBadge">0</span>)
+              </button>
+            </div>
             <select id="timelineFilterProject" class="filter-select">
-              <option value="">Tutti i Progetti</option>
+              <option value="">Tutti i Progetti Attivi</option>
             </select>
           </div>
 
           <div class="timeline-filter-group">
             <label class="filter-label" for="timelineFilterPlatform">Piattaforma:</label>
             <select id="timelineFilterPlatform" class="filter-select">
-              <option value="">Tutte (IG + FB)</option>
+              <option value="meta" selected>Tutte le piattaforme Meta (FB + IG)</option>
               <option value="Instagram">📸 Solo Instagram</option>
               <option value="Facebook">📘 Solo Facebook</option>
+              <option value="other">🌐 Altri canali esterni (LinkedIn, TikTok, GMB...)</option>
+              <option value="all">🌟 Tutti i canali Pubblie</option>
             </select>
           </div>
 
@@ -935,6 +942,38 @@
       </form>
     </dialog>
 
+    <!-- Manage & Archive Pubblie Projects Dialog -->
+    <dialog class="app-dialog" id="managePubblieProjectsDialog" style="max-width: 640px;">
+      <form method="dialog">
+        <div class="dialog-header">
+          <div>
+            <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+              <span>📁</span> Gestione Progetti Pubblie
+            </h2>
+            <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--text-dim);">
+              Archivia i progetti che non usi per non vederli nella Timeline Flow e nei menu di associazione. Puoi ripristinarli quando vuoi.
+            </p>
+          </div>
+          <button class="icon-button" id="closeManagePubblieProjectsBtn" value="close" type="button" aria-label="Chiudi">✕</button>
+        </div>
+        <div class="dialog-body">
+          <div class="form-group" style="margin-bottom: 12px;">
+            <input id="managePubblieProjectsSearch" type="search" placeholder="Cerca progetto per nome o team..." autocomplete="off">
+          </div>
+          <div id="managePubblieProjectsList" style="max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+        <div class="dialog-actions" style="justify-content: space-between;">
+          <button class="btn btn-ghost" id="restoreAllPubblieProjectsBtn" type="button">Ripristina Tutti</button>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" id="cancelManagePubblieProjectsBtn" type="button">Annulla</button>
+            <button class="btn btn-primary" id="saveManagedPubblieProjectsBtn" type="button">Salva Modifiche</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
     <!-- Pubblie & Meta Mapping Configuration Dialog -->
     <dialog class="app-dialog" id="pubblieConfigDialog" style="max-width: 860px;">
       <form id="pubblieConfigForm" method="dialog">
@@ -1103,6 +1142,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=2.5"></script>
+    <script src="app.js?v=2.6"></script>
   </body>
 </html>

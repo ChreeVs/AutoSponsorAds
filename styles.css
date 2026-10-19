@@ -1385,7 +1385,8 @@ textarea:focus {
   cursor: pointer;
 }
 
-.account-manage-item {
+.account-manage-item,
+.project-manage-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1397,20 +1398,23 @@ textarea:focus {
   transition: all 0.2s ease;
 }
 
-.account-manage-item.is-hidden {
+.account-manage-item.is-hidden,
+.project-manage-item.is-archived {
   opacity: 0.55;
   border-style: dashed;
   background: rgba(255, 255, 255, 0.02);
 }
 
-.account-manage-info {
+.account-manage-info,
+.project-manage-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
   overflow: hidden;
 }
 
-.account-manage-info strong {
+.account-manage-info strong,
+.project-manage-info strong {
   font-size: 0.9rem;
   color: #fff;
   white-space: nowrap;
@@ -1418,7 +1422,8 @@ textarea:focus {
   text-overflow: ellipsis;
 }
 
-.account-manage-info span {
+.account-manage-info span,
+.project-manage-info span {
   font-size: 0.74rem;
   color: var(--text-dim);
 }
@@ -2023,6 +2028,33 @@ textarea:focus {
   color: #fff;
 }
 
+.timeline-platform-pill.tiktok {
+  background: linear-gradient(135deg, #010101, #111 40%, #fe2c55 100%);
+  color: #fff;
+  border: 1px solid rgba(37, 244, 238, 0.4);
+}
+
+.timeline-platform-pill.linkedin {
+  background: linear-gradient(135deg, #0077b5, #005582);
+  color: #fff;
+}
+
+.timeline-platform-pill.googlebusiness {
+  background: linear-gradient(135deg, #4285f4, #0f9d58);
+  color: #fff;
+}
+
+.timeline-platform-pill.twitter {
+  background: linear-gradient(135deg, #1da1f2, #0d8bd9);
+  color: #fff;
+}
+
+.timeline-platform-pill.external {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-main);
+  border: 1px solid var(--border-subtle);
+}
+
 .timeline-status-badge {
   font-size: 0.70rem;
   font-weight: 700;
@@ -2047,6 +2079,12 @@ textarea:focus {
   background: rgba(24, 119, 242, 0.16);
   border: 1px solid rgba(24, 119, 242, 0.35);
   color: #60a5fa;
+}
+
+.timeline-status-badge.external {
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  color: var(--text-muted);
 }
 
 /* Card Body (Compact preview) */

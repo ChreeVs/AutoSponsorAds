@@ -75,11 +75,12 @@ const state = {
     pubblieKey: "",
     pubblieUser: null,
     projects: [],
+    archivedProjectIds: new Set(),
     channels: [],
     mappings: [],
     filters: {
       projectId: "",
-      platform: "",
+      platform: "meta",
       status: "",
       days: 30,
       query: ""
@@ -278,6 +279,15 @@ const dom = {
   timelineSpinner: document.getElementById("timelineSpinner"),
   refreshTimelineBtnText: document.getElementById("refreshTimelineBtnText"),
   timelineFilterProject: document.getElementById("timelineFilterProject"),
+  managePubblieProjectsBtn: document.getElementById("managePubblieProjectsBtn"),
+  archivedProjectsCountBadge: document.getElementById("archivedProjectsCountBadge"),
+  managePubblieProjectsDialog: document.getElementById("managePubblieProjectsDialog"),
+  managePubblieProjectsSearch: document.getElementById("managePubblieProjectsSearch"),
+  managePubblieProjectsList: document.getElementById("managePubblieProjectsList"),
+  restoreAllPubblieProjectsBtn: document.getElementById("restoreAllPubblieProjectsBtn"),
+  cancelManagePubblieProjectsBtn: document.getElementById("cancelManagePubblieProjectsBtn"),
+  saveManagedPubblieProjectsBtn: document.getElementById("saveManagedPubblieProjectsBtn"),
+  closeManagePubblieProjectsBtn: document.getElementById("closeManagePubblieProjectsBtn"),
   timelineFilterPlatform: document.getElementById("timelineFilterPlatform"),
   timelineFilterStatus: document.getElementById("timelineFilterStatus"),
   timelineFilterDays: document.getElementById("timelineFilterDays"),
@@ -2257,10 +2267,52 @@ function renderTimelineStream() {
       const badgesLeft = document.createElement("div");
       badgesLeft.className = "timeline-badges-left";
 
-      const isIg = (item.platform || "").toLowerCase() === "instagram";
+      const isIg = (item.platform || "").toLowerCase().includes("instagram");
+      const isFb = (item.platform || "").toLowerCase().includes("facebook");
+      const isTikTok = (item.platform || "").toLowerCase().includes("tiktok");
+      const isLinkedIn = (item.platform || "").toLowerCase().includes("linkedin");
+      const isGmb = (item.platform || "").toLowerCase().includes("google") || (item.platform || "").toLowerCase().includes("business");
+      const isTwitter = (item.platform || "").toLowerCase().includes("twit") || (item.platform || "").toLowerCase().includes("x ");
+
       const platformPill = document.createElement("span");
-      platformPill.className = `timeline-platform-pill ${isIg ? "ig" : "fb"}`;
-      platformPill.textContent = isIg ? "📸 IG" : "📘 FB";
+      let icon = "📱";
+      if (item.isMetaCompatible) {
+        if (isFb && isIg) {
+          platformPill.className = "timeline-platform-pill fb";
+          platformPill.textContent = "📘 FB + 📸 IG";
+          icon = "📘";
+        } else if (isFb) {
+          platformPill.className = "timeline-platform-pill fb";
+          platformPill.textContent = "📘 FB";
+          icon = "📘";
+        } else {
+          platformPill.className = "timeline-platform-pill ig";
+          platformPill.textContent = "📸 IG";
+          icon = "📸";
+        }
+      } else {
+        if (isTikTok) {
+          platformPill.className = "timeline-platform-pill tiktok";
+          platformPill.textContent = "🎵 TikTok";
+          icon = "🎵";
+        } else if (isLinkedIn) {
+          platformPill.className = "timeline-platform-pill linkedin";
+          platformPill.textContent = "💼 LinkedIn";
+          icon = "💼";
+        } else if (isGmb) {
+          platformPill.className = "timeline-platform-pill googlebusiness";
+          platformPill.textContent = "📍 GMB";
+          icon = "📍";
+        } else if (isTwitter) {
+          platformPill.className = "timeline-platform-pill twitter";
+          platformPill.textContent = "🐦 Twitter";
+          icon = "🐦";
+        } else {
+          platformPill.className = "timeline-platform-pill external";
+          platformPill.textContent = `🌐 ${item.platform}`;
+          icon = "🌐";
+        }
+      }
       badgesLeft.appendChild(platformPill);
 
       const timeBadge = document.createElement("span");
@@ -2281,12 +2333,18 @@ function renderTimelineStream() {
 
       // Status Pill Right
       const statusPill = document.createElement("span");
-      statusPill.className = `timeline-status-badge ${item.flowStatus.toLowerCase()}`;
-      if (item.flowStatus === "SPONSORED") {
+      if (!item.isMetaCompatible) {
+        statusPill.className = "timeline-status-badge external";
+        statusPill.innerHTML = `⚪ Canale Esterno`;
+        statusPill.title = `Questo post è programmato su ${item.platform}. Meta Ads supporta solo post di Facebook e Instagram.`;
+      } else if (item.flowStatus === "SPONSORED") {
+        statusPill.className = "timeline-status-badge sponsored";
         statusPill.innerHTML = `🚀 ADV Attiva`;
       } else if (item.flowStatus === "INCLUDED") {
+        statusPill.className = "timeline-status-badge included";
         statusPill.innerHTML = `🟢 Nel Flow`;
       } else {
+        statusPill.className = "timeline-status-badge excluded";
         statusPill.innerHTML = `⚪ Escluso`;
       }
       header.appendChild(statusPill);
@@ -2304,11 +2362,11 @@ function renderTimelineStream() {
         img.alt = "Anteprima";
         img.loading = "lazy";
         img.onerror = () => {
-          mediaBox.innerHTML = `<span class="timeline-media-placeholder">${isIg ? "📸" : "📘"}</span>`;
+          mediaBox.innerHTML = `<span class="timeline-media-placeholder">${icon}</span>`;
         };
         mediaBox.appendChild(img);
       } else {
-        mediaBox.innerHTML = `<span class="timeline-media-placeholder">${isIg ? "📸" : "📘"}</span>`;
+        mediaBox.innerHTML = `<span class="timeline-media-placeholder">${icon}</span>`;
       }
       body.appendChild(mediaBox);
 
@@ -2323,7 +2381,9 @@ function renderTimelineStream() {
 
       const targetPill = document.createElement("div");
       targetPill.className = "timeline-destination-pill";
-      if (item.mapping) {
+      if (!item.isMetaCompatible) {
+        targetPill.innerHTML = `<span class="dest-icon">${icon}</span> Pubblie: <strong>${escapeHtml(item.channelName || item.platform)}</strong> <small style="color: var(--text-dim);">(Solo organico)</small>`;
+      } else if (item.mapping) {
         const campName = item.mapping.campaign_name || item.mapping.campaign_id;
         const adsetName = item.mapping.adset_name || item.mapping.adset_id;
         targetPill.title = `Campagna: ${campName} | Gruppo: ${adsetName}`;
@@ -2344,7 +2404,14 @@ function renderTimelineStream() {
       const footer = document.createElement("div");
       footer.className = "timeline-card-footer";
 
-      if (item.flowStatus !== "SPONSORED") {
+      if (!item.isMetaCompatible) {
+        const nonMetaNote = document.createElement("span");
+        nonMetaNote.style.fontSize = "0.78rem";
+        nonMetaNote.style.color = "var(--text-dim)";
+        nonMetaNote.title = "Questo post è destinato a un canale non Meta. Le campagne pubblicitarie Meta Ads supportano solo Facebook e Instagram.";
+        nonMetaNote.innerHTML = `${icon} Canale <strong>${escapeHtml(item.platform)}</strong> (Non sponsorizzabile su Meta Ads)`;
+        footer.appendChild(nonMetaNote);
+      } else if (item.flowStatus !== "SPONSORED") {
         const flowToggleWrapper = document.createElement("label");
         flowToggleWrapper.className = "flow-toggle-wrapper";
         flowToggleWrapper.title = "Attiva per sponsorizzare automaticamente questo post o disattiva per escluderlo";
@@ -2375,7 +2442,7 @@ function renderTimelineStream() {
       const actions = document.createElement("div");
       actions.className = "timeline-card-actions";
 
-      if (item.flowStatus !== "SPONSORED" && item.mapping) {
+      if (item.isMetaCompatible && item.flowStatus !== "SPONSORED" && item.mapping) {
         const sponsorNowBtn = document.createElement("button");
         sponsorNowBtn.type = "button";
         sponsorNowBtn.className = "btn btn-secondary btn-xs";
@@ -2668,34 +2735,172 @@ async function loadPubblieMetaAdsets(accountId, campaignId, targetAdsetId = "") 
 async function loadPubblieProjects() {
   const projectSelect = dom.mappingPubblieProjectSelect;
   const filterProject = dom.timelineFilterProject;
-  if (!projectSelect) return;
+  if (!projectSelect && !filterProject) return;
 
   try {
     const res = await api("/api/pubblie/projects");
     state.timeline.projects = res.data || [];
-
-    projectSelect.innerHTML = `<option value="">-- Seleziona un Progetto Pubblie --</option>`;
-    if (filterProject) {
-      filterProject.innerHTML = `<option value="">Tutti i Progetti</option>`;
+    if (Array.isArray(res.archivedProjectIds)) {
+      state.timeline.archivedProjectIds = new Set(res.archivedProjectIds);
     }
 
-    for (const p of state.timeline.projects) {
-      const opt = document.createElement("option");
-      opt.value = p.id;
-      opt.textContent = `${p.name} ${p.teamName ? `(${p.teamName})` : ""}`;
-      projectSelect.appendChild(opt);
+    if (dom.archivedProjectsCountBadge) {
+      dom.archivedProjectsCountBadge.textContent = state.timeline.archivedProjectIds.size;
+    }
+
+    if (projectSelect) {
+      projectSelect.innerHTML = `<option value="">-- Seleziona un Progetto Pubblie --</option>`;
+    }
+    if (filterProject) {
+      filterProject.innerHTML = `<option value="">Tutti i Progetti Attivi</option>`;
+    }
+
+    const activeProjects = state.timeline.projects.filter(p => !state.timeline.archivedProjectIds.has(p.id));
+    const archivedProjects = state.timeline.projects.filter(p => state.timeline.archivedProjectIds.has(p.id));
+
+    for (const p of activeProjects) {
+      const label = `${p.name} ${p.teamName ? `(${p.teamName})` : ""}`;
+      if (projectSelect) {
+        const opt = document.createElement("option");
+        opt.value = p.id;
+        opt.textContent = label;
+        projectSelect.appendChild(opt);
+      }
 
       if (filterProject) {
         const optFilter = document.createElement("option");
         optFilter.value = p.id;
-        optFilter.textContent = `${p.name} ${p.teamName ? `(${p.teamName})` : ""}`;
+        optFilter.textContent = label;
+        if (state.timeline.filters.projectId === p.id) optFilter.selected = true;
         filterProject.appendChild(optFilter);
+      }
+    }
+
+    if (archivedProjects.length > 0) {
+      if (filterProject) {
+        const optGroupFilter = document.createElement("optgroup");
+        optGroupFilter.label = "── Progetti Archiviati ──";
+        for (const p of archivedProjects) {
+          const optFilter = document.createElement("option");
+          optFilter.value = p.id;
+          optFilter.textContent = `${p.name} [Archiviato]`;
+          if (state.timeline.filters.projectId === p.id) optFilter.selected = true;
+          optGroupFilter.appendChild(optFilter);
+        }
+        filterProject.appendChild(optGroupFilter);
+      }
+
+      if (projectSelect) {
+        const optGroupProj = document.createElement("optgroup");
+        optGroupProj.label = "── Progetti Archiviati ──";
+        for (const p of archivedProjects) {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = `${p.name} [Archiviato]`;
+          optGroupProj.appendChild(opt);
+        }
+        projectSelect.appendChild(optGroupProj);
       }
     }
   } catch (err) {
     console.warn("Impossibile caricare progetti Pubblie:", err);
-    projectSelect.innerHTML = `<option value="">(Nessun progetto trovato o chiave non valida)</option>`;
+    if (projectSelect) projectSelect.innerHTML = `<option value="">(Nessun progetto trovato o chiave non valida)</option>`;
   }
+}
+
+function openManageProjectsDialog() {
+  if (!dom.managePubblieProjectsDialog) return;
+  renderManageProjectsList();
+  dom.managePubblieProjectsDialog.showModal();
+}
+
+function renderManageProjectsList(searchQuery = "") {
+  const container = dom.managePubblieProjectsList;
+  if (!container) return;
+  container.innerHTML = "";
+
+  const query = (searchQuery || dom.managePubblieProjectsSearch?.value || "").toLowerCase().trim();
+  const projects = (state.timeline.projects || []).filter(p => {
+    if (!query) return true;
+    return (p.name || "").toLowerCase().includes(query) ||
+           (p.teamName || "").toLowerCase().includes(query) ||
+           (p.id || "").toLowerCase().includes(query);
+  });
+
+  if (!projects.length) {
+    container.innerHTML = `<div style="text-align: center; color: var(--text-dim); padding: 24px;">Nessun progetto trovato</div>`;
+    return;
+  }
+
+  projects.forEach(p => {
+    const isArchived = state.timeline.archivedProjectIds.has(p.id);
+    const row = document.createElement("div");
+    row.className = `project-manage-item ${isArchived ? "is-archived" : ""}`;
+    row.innerHTML = `
+      <div class="project-manage-info">
+        <strong>${escapeHtml(p.name)} ${isArchived ? '<span class="badge-archived">Archiviato</span>' : ''}</strong>
+        <span>${escapeHtml(p.teamName ? `Team: ${p.teamName} · ` : "")}ID: ${escapeHtml(p.id)}</span>
+      </div>
+      <button class="btn btn-sm ${isArchived ? 'btn-secondary' : 'btn-ghost'} toggle-archive-proj-btn" data-id="${p.id}" type="button">
+        ${isArchived ? '👁️ Ripristina' : '🙈 Archivia'}
+      </button>
+    `;
+
+    row.querySelector(".toggle-archive-proj-btn").addEventListener("click", () => {
+      if (state.timeline.archivedProjectIds.has(p.id)) {
+        state.timeline.archivedProjectIds.delete(p.id);
+      } else {
+        state.timeline.archivedProjectIds.add(p.id);
+      }
+      renderManageProjectsList();
+    });
+
+    container.appendChild(row);
+  });
+}
+
+async function saveManagedProjects() {
+  const archivedArray = Array.from(state.timeline.archivedProjectIds);
+  try {
+    await api("/api/pubblie/archived-projects", {
+      method: "POST",
+      body: JSON.stringify({ archivedProjectIds: archivedArray })
+    });
+    try {
+      localStorage.setItem("autosponsor_archived_projects", JSON.stringify(archivedArray));
+    } catch {}
+
+    if (dom.archivedProjectsCountBadge) {
+      dom.archivedProjectsCountBadge.textContent = state.timeline.archivedProjectIds.size;
+    }
+
+    await loadPubblieProjects();
+    await loadTimelineFeed();
+
+    dom.managePubblieProjectsDialog.close();
+    showBanner(`✓ Progetti aggiornati (${archivedArray.length} archiviati)`, "info");
+  } catch (err) {
+    showBanner(`Errore salvataggio progetti archiviati: ${err.message}`, "danger");
+  }
+}
+
+function setupProjectManagement() {
+  dom.managePubblieProjectsBtn?.addEventListener("click", () => openManageProjectsDialog());
+  dom.closeManagePubblieProjectsBtn?.addEventListener("click", () => dom.managePubblieProjectsDialog?.close());
+  dom.cancelManagePubblieProjectsBtn?.addEventListener("click", () => dom.managePubblieProjectsDialog?.close());
+
+  dom.managePubblieProjectsSearch?.addEventListener("input", (e) => {
+    renderManageProjectsList(e.target.value);
+  });
+
+  dom.restoreAllPubblieProjectsBtn?.addEventListener("click", () => {
+    state.timeline.archivedProjectIds.clear();
+    renderManageProjectsList();
+  });
+
+  dom.saveManagedPubblieProjectsBtn?.addEventListener("click", async () => {
+    await saveManagedProjects();
+  });
 }
 
 async function loadPubblieChannels(projectId) {
@@ -3041,6 +3246,7 @@ async function initApp() {
   setupGuideActions();
   setupManualListeners();
   setupAccountManagement();
+  setupProjectManagement();
   setupAuth();
   setupTimelineListeners();
   setupPubblieModalListeners();
