@@ -767,9 +767,10 @@ async function handleApi(req, res, url) {
       const decisions = await db.getTimelineDecisions();
       const processedPosts = await db.getProcessedPosts(100);
 
-      const items = [];
+      let items = [];
       const now = new Date();
-      const fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      const fromDate = startOfToday.toISOString();
       const toDate = new Date(now.getTime() + daysAhead * 24 * 60 * 60 * 1000).toISOString();
 
       if (pubblieService.getApiKey()) {
@@ -918,36 +919,12 @@ async function handleApi(req, res, url) {
         }
       }
 
-      for (const pp of processedPosts) {
-        if (!items.some(it => it.rawId === pp.post_id)) {
-          items.push({
-            id: `meta_${pp.post_id}`,
-            rawId: pp.post_id,
-            source: "meta",
-            platform: pp.platform || "Instagram",
-            primaryProvider: (pp.platform || "Instagram").toLowerCase(),
-            providers: [(pp.platform || "Instagram").toLowerCase()],
-            isMetaCompatible: true,
-            projectId: "",
-            projectName: "Meta Ads",
-            channelIds: [pp.source_id],
-            channelName: pp.source_id,
-            text: pp.post_message || pp.ad_name || "",
-            images: [],
-            videoIds: [],
-            link: pp.post_permalink || "",
-            scheduledAt: null,
-            publishedAt: pp.created_at,
-            effectiveDate: pp.created_at,
-            isFuture: false,
-            pubblieStatus: "PUBLISHED",
-            flowStatus: "SPONSORED",
-            adId: pp.ad_id,
-            mapping: null,
-            customTarget: null
-          });
-        }
-      }
+      // Strictly only today (from 00:00:00) and future posts
+      const todayTimestamp = startOfToday.getTime();
+      items = items.filter(it => {
+        const t = new Date(it.effectiveDate).getTime();
+        return !isNaN(t) && t >= todayTimestamp;
+      });
 
       // Sort timeline strictly chronologically (upcoming earliest to latest)
       items.sort((a, b) => new Date(a.effectiveDate).getTime() - new Date(b.effectiveDate).getTime());

@@ -2206,6 +2206,12 @@ function renderTimelineStream() {
     );
   }
 
+  // Strictly filter only today (diffDays === 0) and future posts (diffDays > 0)
+  items = items.filter(it => {
+    const info = parseTimelineDate(it.effectiveDate);
+    return info.diffDays >= 0;
+  });
+
   if (!items.length) {
     empty.style.display = "block";
     if (wrapper) wrapper.style.display = "none";
@@ -2230,52 +2236,16 @@ function renderTimelineStream() {
     dayGroups.get(info.dateKey).items.push(item);
   }
 
-  // Partition groups into past (diffDays < 0) and active (diffDays >= 0)
-  const pastGroups = [];
-  const activeGroups = [];
-
-  for (const group of dayGroups.values()) {
-    if (group.info.diffDays < 0) {
-      pastGroups.push(group);
-    } else {
-      activeGroups.push(group);
-    }
-  }
-
-  // 1. Render Past Posts Drawer (COLLAPSED by default - NOT visible in chiaro)
-  if (pastGroups.length > 0) {
-    const pastItemsCount = pastGroups.reduce((acc, g) => acc + g.items.length, 0);
-    const drawerEl = document.createElement("details");
-    drawerEl.className = "timeline-past-drawer";
-    drawerEl.innerHTML = `
-      <summary class="timeline-past-summary">
-        <span>📁</span>
-        <span>Archivio Post Passati</span>
-        <span class="past-summary-badge">${pastItemsCount} post</span>
-        <span class="past-summary-hint">Mostra ▾</span>
-      </summary>
-      <div class="timeline-past-content"></div>
-    `;
-
-    const pastContentEl = drawerEl.querySelector(".timeline-past-content");
-    for (const group of pastGroups) {
-      const groupEl = createDateGroupElement(group.info, group.items, true);
-      pastContentEl.appendChild(groupEl);
-    }
-
-    container.appendChild(drawerEl);
-  }
-
-  // 2. Render Active Groups (Today + Future) directly in plain view
-  for (const group of activeGroups) {
-    const groupEl = createDateGroupElement(group.info, group.items, false);
+  // Render strictly Today and Future date groups
+  for (const { info, items: groupItems } of dayGroups.values()) {
+    const groupEl = createDateGroupElement(info, groupItems);
     container.appendChild(groupEl);
   }
 }
 
-function createDateGroupElement(info, groupItems, isPast = false) {
+function createDateGroupElement(info, groupItems) {
   const groupEl = document.createElement("div");
-  groupEl.className = `timeline-date-group ${isPast ? "is-past" : ""}`;
+  groupEl.className = "timeline-date-group";
   if (info.isToday) groupEl.dataset.isToday = "true";
 
   // Milestone Header
@@ -2285,7 +2255,7 @@ function createDateGroupElement(info, groupItems, isPast = false) {
   headerEl.innerHTML = `
     <span class="date-milestone-marker"></span>
     <div class="date-title-box">
-      <span>${info.isToday ? "🟢" : (isPast ? "📁" : "📅")}</span>
+      <span>${info.isToday ? "🟢" : "📅"}</span>
       <span>${escapeHtml(info.badgeText)}</span>
     </div>
     <span class="date-badge-count">${groupItems.length} post</span>
