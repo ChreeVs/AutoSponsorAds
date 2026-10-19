@@ -304,10 +304,34 @@
           </div>
         </div>
 
-        <!-- Timeline Stream Container -->
+        <!-- Horizontal Timeline Flow Navigation Strip -->
+        <div class="timeline-flow-nav-strip">
+          <div class="flow-nav-left">
+            <span class="flow-direction-indicator">
+              <span class="flow-pulse-dot"></span>
+              <strong>Flusso Orizzontale:</strong>
+              <span class="flow-arrow-seq">Passato / Oggi ───► Prossimi Giorni</span>
+            </span>
+          </div>
+          <div class="flow-nav-right">
+            <button class="btn btn-ghost btn-xs" id="timelineScrollPrevBtn" type="button" title="Scorri indietro a sinistra">
+              ◀ Precedenti
+            </button>
+            <button class="btn btn-secondary btn-xs" id="timelineScrollTodayBtn" type="button" title="Centra la vista sulla data di Oggi">
+              🎯 Salta a Oggi
+            </button>
+            <button class="btn btn-ghost btn-xs" id="timelineScrollNextBtn" type="button" title="Scorri avanti verso destra">
+              Successivi ▶
+            </button>
+          </div>
+        </div>
+
+        <!-- Timeline Stream Container (Horizontal Rail) -->
         <div class="timeline-container">
-          <div class="timeline-stream" id="timelineStream">
-            <!-- Chronological groups and post cards dynamically injected -->
+          <div class="timeline-stream-wrapper" id="timelineStreamWrapper">
+            <div class="timeline-stream horizontal-stream" id="timelineStream">
+              <!-- Chronological date columns & cards dynamically injected -->
+            </div>
           </div>
 
           <!-- Empty State -->

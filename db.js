@@ -186,8 +186,13 @@ async function setupPostgresSchema() {
       custom_target TEXT DEFAULT '',
       ad_id VARCHAR(128) DEFAULT '',
       notes TEXT DEFAULT '',
+      post_text TEXT DEFAULT '',
+      post_permalink TEXT DEFAULT '',
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE timeline_decisions ADD COLUMN IF NOT EXISTS post_text TEXT DEFAULT '';
+    ALTER TABLE timeline_decisions ADD COLUMN IF NOT EXISTS post_permalink TEXT DEFAULT '';
   `);
 }
 
@@ -926,19 +931,42 @@ async function saveTimelineDecision(postId, data = {}) {
   const postPermalink = data.post_permalink || data.postPermalink || "";
 
   if (dbType === "postgres") {
-    await pgPool.query(`
-      INSERT INTO timeline_decisions (
-        post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, post_text, post_permalink, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-      ON CONFLICT (post_id) DO UPDATE SET
-        sponsorship_status = EXCLUDED.sponsorship_status,
-        custom_target = CASE WHEN EXCLUDED.custom_target <> '' THEN EXCLUDED.custom_target ELSE timeline_decisions.custom_target END,
-        ad_id = CASE WHEN EXCLUDED.ad_id <> '' THEN EXCLUDED.ad_id ELSE timeline_decisions.ad_id END,
-        notes = CASE WHEN EXCLUDED.notes <> '' THEN EXCLUDED.notes ELSE timeline_decisions.notes END,
-        post_text = CASE WHEN EXCLUDED.post_text <> '' THEN EXCLUDED.post_text ELSE timeline_decisions.post_text END,
-        post_permalink = CASE WHEN EXCLUDED.post_permalink <> '' THEN EXCLUDED.post_permalink ELSE timeline_decisions.post_permalink END,
-        updated_at = EXCLUDED.updated_at
-    `, [postId, source, projectId, channelId, status, customTargetStr, adId, notes, postText, postPermalink, now]);
+    try {
+      await pgPool.query(`
+        INSERT INTO timeline_decisions (
+          post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, post_text, post_permalink, updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (post_id) DO UPDATE SET
+          sponsorship_status = EXCLUDED.sponsorship_status,
+          custom_target = CASE WHEN EXCLUDED.custom_target <> '' THEN EXCLUDED.custom_target ELSE timeline_decisions.custom_target END,
+          ad_id = CASE WHEN EXCLUDED.ad_id <> '' THEN EXCLUDED.ad_id ELSE timeline_decisions.ad_id END,
+          notes = CASE WHEN EXCLUDED.notes <> '' THEN EXCLUDED.notes ELSE timeline_decisions.notes END,
+          post_text = CASE WHEN EXCLUDED.post_text <> '' THEN EXCLUDED.post_text ELSE timeline_decisions.post_text END,
+          post_permalink = CASE WHEN EXCLUDED.post_permalink <> '' THEN EXCLUDED.post_permalink ELSE timeline_decisions.post_permalink END,
+          updated_at = EXCLUDED.updated_at
+      `, [postId, source, projectId, channelId, status, customTargetStr, adId, notes, postText, postPermalink, now]);
+    } catch (err) {
+      if (err.message && (err.message.includes("post_text") || err.message.includes("post_permalink") || err.code === "42703")) {
+        console.warn("[DB] Migrazione 'timeline_decisions' eseguita a caldo per PostgreSQL...");
+        await pgPool.query("ALTER TABLE timeline_decisions ADD COLUMN IF NOT EXISTS post_text TEXT DEFAULT '';");
+        await pgPool.query("ALTER TABLE timeline_decisions ADD COLUMN IF NOT EXISTS post_permalink TEXT DEFAULT '';");
+        await pgPool.query(`
+          INSERT INTO timeline_decisions (
+            post_id, source, project_id, channel_id, sponsorship_status, custom_target, ad_id, notes, post_text, post_permalink, updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+          ON CONFLICT (post_id) DO UPDATE SET
+            sponsorship_status = EXCLUDED.sponsorship_status,
+            custom_target = CASE WHEN EXCLUDED.custom_target <> '' THEN EXCLUDED.custom_target ELSE timeline_decisions.custom_target END,
+            ad_id = CASE WHEN EXCLUDED.ad_id <> '' THEN EXCLUDED.ad_id ELSE timeline_decisions.ad_id END,
+            notes = CASE WHEN EXCLUDED.notes <> '' THEN EXCLUDED.notes ELSE timeline_decisions.notes END,
+            post_text = CASE WHEN EXCLUDED.post_text <> '' THEN EXCLUDED.post_text ELSE timeline_decisions.post_text END,
+            post_permalink = CASE WHEN EXCLUDED.post_permalink <> '' THEN EXCLUDED.post_permalink ELSE timeline_decisions.post_permalink END,
+            updated_at = EXCLUDED.updated_at
+        `, [postId, source, projectId, channelId, status, customTargetStr, adId, notes, postText, postPermalink, now]);
+      } else {
+        throw err;
+      }
+    }
     return { post_id: postId, sponsorship_status: status, updated_at: now };
   }
 

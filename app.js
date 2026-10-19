@@ -285,6 +285,10 @@ const dom = {
   timelineIncludeAllBtn: document.getElementById("timelineIncludeAllBtn"),
   timelineExcludeAllBtn: document.getElementById("timelineExcludeAllBtn"),
   timelineStream: document.getElementById("timelineStream"),
+  timelineStreamWrapper: document.getElementById("timelineStreamWrapper"),
+  timelineScrollPrevBtn: document.getElementById("timelineScrollPrevBtn"),
+  timelineScrollNextBtn: document.getElementById("timelineScrollNextBtn"),
+  timelineScrollTodayBtn: document.getElementById("timelineScrollTodayBtn"),
   timelineEmptyState: document.getElementById("timelineEmptyState"),
   timelineEmptyText: document.getElementById("timelineEmptyText"),
   timelineEmptyActionBtn: document.getElementById("timelineEmptyActionBtn"),
@@ -2034,25 +2038,63 @@ async function loadInitialData() {
 // TIMELINE FLOW & PUBBLIE CONTROLLER IMPLEMENTATION
 // -----------------------------------------------------------------------------
 
-function formatTimelineDateGroup(dateStr) {
-  if (!dateStr) return "Senza Data";
+function parseTimelineDate(dateStr) {
+  if (!dateStr) {
+    return {
+      dateKey: "nodate",
+      diffDays: 999,
+      isToday: false,
+      badgeText: "Senza Data",
+      fullDate: "",
+      countTag: ""
+    };
+  }
   const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "Data non valida";
+  if (isNaN(d.getTime())) {
+    return {
+      dateKey: "invalid",
+      diffDays: 999,
+      isToday: false,
+      badgeText: "Data non valida",
+      fullDate: "",
+      countTag: ""
+    };
+  }
 
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const targetDay = new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const diffDays = Math.round((targetDay - today) / (1000 * 60 * 60 * 24));
+  const isToday = diffDays === 0;
 
-  const options = { weekday: "long", day: "numeric", month: "long" };
-  const formattedDate = d.toLocaleDateString("it-IT", options);
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const dateKey = `${yyyy}-${mm}-${dd}`;
 
-  if (diffDays === 0) return `Oggi • ${formattedDate}`;
-  if (diffDays === 1) return `Domani • ${formattedDate}`;
-  if (diffDays === -1) return `Ieri • ${formattedDate}`;
-  if (diffDays > 1 && diffDays <= 7) return `Tra ${diffDays} giorni • ${formattedDate}`;
-  if (diffDays > 7) return `Tra ${diffDays} giorni • ${formattedDate}`;
-  return formattedDate;
+  const weekdayStr = d.toLocaleDateString("it-IT", { weekday: "short" });
+  const capitalizedWeekday = weekdayStr.charAt(0).toUpperCase() + weekdayStr.slice(1);
+  const dayMonthStr = d.toLocaleDateString("it-IT", { day: "numeric", month: "short" });
+  const fullDate = d.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+
+  let badgeText = `${capitalizedWeekday} ${dayMonthStr}`;
+  if (diffDays === 0) badgeText = `OGGI • ${dayMonthStr}`;
+  else if (diffDays === 1) badgeText = `DOMANI • ${dayMonthStr}`;
+  else if (diffDays === -1) badgeText = `IERI • ${dayMonthStr}`;
+
+  return {
+    dateKey,
+    diffDays,
+    isToday,
+    badgeText,
+    fullDate,
+    weekday: capitalizedWeekday,
+    dayMonth: dayMonthStr
+  };
+}
+
+function formatTimelineDateGroup(dateStr) {
+  return parseTimelineDate(dateStr).badgeText;
 }
 
 function formatTimeOnly(dateStr) {
@@ -2138,6 +2180,7 @@ async function loadTimelineFeed() {
 function renderTimelineStream() {
   const container = dom.timelineStream;
   const empty = dom.timelineEmptyState;
+  const wrapper = dom.timelineStreamWrapper;
   if (!container || !empty) return;
 
   container.innerHTML = "";
@@ -2155,31 +2198,44 @@ function renderTimelineStream() {
 
   if (!items.length) {
     empty.style.display = "block";
-    container.style.display = "none";
+    if (wrapper) wrapper.style.display = "none";
+    else container.style.display = "none";
     return;
   }
 
   empty.style.display = "none";
-  container.style.display = "block";
+  if (wrapper) wrapper.style.display = "block";
+  container.style.display = "flex";
 
-  // Group items by date string
-  const groups = {};
+  // Group items by dateKey in chronological sequence
+  const dayGroups = new Map();
   for (const item of items) {
-    const groupKey = formatTimelineDateGroup(item.effectiveDate);
-    if (!groups[groupKey]) groups[groupKey] = [];
-    groups[groupKey].push(item);
+    const info = parseTimelineDate(item.effectiveDate);
+    if (!dayGroups.has(info.dateKey)) {
+      dayGroups.set(info.dateKey, {
+        info,
+        items: []
+      });
+    }
+    dayGroups.get(info.dateKey).items.push(item);
   }
 
-  for (const [dateLabel, groupItems] of Object.entries(groups)) {
+  for (const { info, items: groupItems } of dayGroups.values()) {
     const groupEl = document.createElement("div");
     groupEl.className = "timeline-date-group";
+    if (info.isToday) groupEl.dataset.isToday = "true";
 
+    // Date milestone header
     const headerEl = document.createElement("div");
-    headerEl.className = "timeline-date-header";
+    headerEl.className = `timeline-date-header ${info.isToday ? "is-today" : ""}`;
+    headerEl.title = info.fullDate || info.badgeText;
     headerEl.innerHTML = `
-      <span class="date-badge-dot"></span>
-      <span>${escapeHtml(dateLabel)}</span>
-      <span style="opacity: 0.6; font-size: 0.76rem; font-weight: normal;">(${groupItems.length} post)</span>
+      <span class="date-milestone-marker"></span>
+      <div class="date-title-box">
+        <span>${info.isToday ? "🟢" : "📅"}</span>
+        <span>${escapeHtml(info.badgeText)}</span>
+      </div>
+      <span class="date-badge-count">${groupItems.length} post</span>
     `;
     groupEl.appendChild(headerEl);
 
@@ -2191,10 +2247,6 @@ function renderTimelineStream() {
       cardWrapper.className = `timeline-card-wrapper ${item.flowStatus.toLowerCase()}`;
       cardWrapper.dataset.postId = item.rawId;
 
-      const node = document.createElement("div");
-      node.className = "timeline-node";
-      cardWrapper.appendChild(node);
-
       const card = document.createElement("div");
       card.className = `timeline-card flow-${item.flowStatus.toLowerCase()}`;
 
@@ -2205,21 +2257,22 @@ function renderTimelineStream() {
       const badgesLeft = document.createElement("div");
       badgesLeft.className = "timeline-badges-left";
 
+      const isIg = (item.platform || "").toLowerCase() === "instagram";
+      const platformPill = document.createElement("span");
+      platformPill.className = `timeline-platform-pill ${isIg ? "ig" : "fb"}`;
+      platformPill.textContent = isIg ? "📸 IG" : "📘 FB";
+      badgesLeft.appendChild(platformPill);
+
       const timeBadge = document.createElement("span");
       timeBadge.className = "timeline-time-badge";
-      timeBadge.textContent = formatTimeOnly(item.effectiveDate) || "Programmato";
+      timeBadge.textContent = formatTimeOnly(item.effectiveDate) || "Schedulato";
       badgesLeft.appendChild(timeBadge);
-
-      const platformPill = document.createElement("span");
-      const isIg = item.platform.toLowerCase() === "instagram";
-      platformPill.className = `timeline-platform-pill ${isIg ? "ig" : "fb"}`;
-      platformPill.textContent = isIg ? "📸 Instagram" : "📘 Facebook";
-      badgesLeft.appendChild(platformPill);
 
       if (item.projectName) {
         const projBadge = document.createElement("span");
         projBadge.className = "badge-tag";
-        projBadge.style.fontSize = "0.72rem";
+        projBadge.style.fontSize = "0.70rem";
+        projBadge.style.padding = "2px 6px";
         projBadge.textContent = item.projectName;
         badgesLeft.appendChild(projBadge);
       }
@@ -2230,17 +2283,16 @@ function renderTimelineStream() {
       const statusPill = document.createElement("span");
       statusPill.className = `timeline-status-badge ${item.flowStatus.toLowerCase()}`;
       if (item.flowStatus === "SPONSORED") {
-        statusPill.innerHTML = `🚀 Sponsorizzato su Meta ${item.adId ? `(ID: ${item.adId.slice(-6)})` : ""}`;
+        statusPill.innerHTML = `🚀 ADV Attiva`;
       } else if (item.flowStatus === "INCLUDED") {
-        statusPill.innerHTML = `🟢 Incluso nel Flow (Verrà Sponsorizzato)`;
+        statusPill.innerHTML = `🟢 Nel Flow`;
       } else {
-        statusPill.innerHTML = `⛔ Escluso dal Flow (Non Sponsorizzare)`;
+        statusPill.innerHTML = `⚪ Escluso`;
       }
       header.appendChild(statusPill);
-
       card.appendChild(header);
 
-      // 2. Body
+      // 2. Body: media + preview
       const body = document.createElement("div");
       body.className = "timeline-card-body";
 
@@ -2249,7 +2301,7 @@ function renderTimelineStream() {
       if (item.images && item.images.length > 0) {
         const img = document.createElement("img");
         img.src = item.images[0];
-        img.alt = "Anteprima Post";
+        img.alt = "Anteprima";
         img.loading = "lazy";
         img.onerror = () => {
           mediaBox.innerHTML = `<span class="timeline-media-placeholder">${isIg ? "📸" : "📘"}</span>`;
@@ -2266,17 +2318,18 @@ function renderTimelineStream() {
       const caption = document.createElement("p");
       caption.className = "timeline-caption-text";
       caption.textContent = item.text || "(Nessun testo / media caption)";
+      caption.title = item.text || "";
       contentBox.appendChild(caption);
 
       const targetPill = document.createElement("div");
       targetPill.className = "timeline-destination-pill";
       if (item.mapping) {
-        const accName = item.mapping.ad_account_name || item.mapping.ad_account_id;
         const campName = item.mapping.campaign_name || item.mapping.campaign_id;
         const adsetName = item.mapping.adset_name || item.mapping.adset_id;
-        targetPill.innerHTML = `<span class="dest-icon">🎯</span> Destinazione Meta: <strong>${escapeHtml(accName)}</strong> &gt; ${escapeHtml(campName)} &gt; <strong>${escapeHtml(adsetName)}</strong>`;
+        targetPill.title = `Campagna: ${campName} | Gruppo: ${adsetName}`;
+        targetPill.innerHTML = `<span class="dest-icon">🎯</span> Meta: <strong>${escapeHtml(adsetName || campName)}</strong>`;
       } else {
-        targetPill.innerHTML = `<span style="color: var(--accent-amber);">⚠️ Nessun parametro Meta associato</span> • <a href="#" class="configure-mapping-link" style="color: var(--accent-emerald); text-decoration: underline;">Associa ora</a>`;
+        targetPill.innerHTML = `<span style="color: var(--accent-amber);">⚠️ Nessun target Meta</span> • <a href="#" class="configure-mapping-link" style="color: var(--accent-emerald); text-decoration: underline;">Associa</a>`;
         targetPill.querySelector(".configure-mapping-link")?.addEventListener("click", (e) => {
           e.preventDefault();
           openPubblieConfigModal("mapping");
@@ -2287,36 +2340,35 @@ function renderTimelineStream() {
       body.appendChild(contentBox);
       card.appendChild(body);
 
-      // 3. Footer / Controls
+      // 3. Footer / Decision Switch
       const footer = document.createElement("div");
       footer.className = "timeline-card-footer";
 
       if (item.flowStatus !== "SPONSORED") {
         const flowToggleWrapper = document.createElement("label");
         flowToggleWrapper.className = "flow-toggle-wrapper";
-        flowToggleWrapper.title = "Attiva per sponsorizzare questo post o disattiva per escluderlo dal flow";
+        flowToggleWrapper.title = "Attiva per sponsorizzare automaticamente questo post o disattiva per escluderlo";
 
         const isChecked = item.flowStatus === "INCLUDED";
         flowToggleWrapper.innerHTML = `
           <input type="checkbox" class="flow-toggle-checkbox" ${isChecked ? "checked" : ""}>
           <span class="flow-toggle-switch"></span>
-          <span class="flow-toggle-label">${isChecked ? "Sponsorizza nel Flow" : "Non Sponsorizzare"}</span>
+          <span class="flow-toggle-label">${isChecked ? "Sponsorizza Post" : "Non Sponsorizzare"}</span>
         `;
 
         const checkbox = flowToggleWrapper.querySelector(".flow-toggle-checkbox");
         checkbox.addEventListener("change", () => {
-          const newStatus = checkbox.checked ? "INCLUDED" : "EXCLUDED";
-          flowToggleWrapper.querySelector(".flow-toggle-label").textContent = checkbox.checked ? "Sponsorizza nel Flow" : "Non Sponsorizzare";
+          flowToggleWrapper.querySelector(".flow-toggle-label").textContent = checkbox.checked ? "Sponsorizza Post" : "Non Sponsorizzare";
           togglePostFlow(item.rawId, checkbox.checked);
         });
 
         footer.appendChild(flowToggleWrapper);
       } else {
         const sponsoredNote = document.createElement("span");
-        sponsoredNote.style.fontSize = "0.82rem";
+        sponsoredNote.style.fontSize = "0.78rem";
         sponsoredNote.style.color = "var(--accent-blue)";
         sponsoredNote.style.fontWeight = "600";
-        sponsoredNote.innerHTML = `✓ Annuncio Meta Creato con successo`;
+        sponsoredNote.innerHTML = `✓ ADV Meta Creata ${item.adId ? `(${item.adId.slice(-6)})` : ""}`;
         footer.appendChild(sponsoredNote);
       }
 
@@ -2326,8 +2378,8 @@ function renderTimelineStream() {
       if (item.flowStatus !== "SPONSORED" && item.mapping) {
         const sponsorNowBtn = document.createElement("button");
         sponsorNowBtn.type = "button";
-        sponsorNowBtn.className = "btn btn-secondary btn-sm";
-        sponsorNowBtn.innerHTML = `⚡ Sponsorizza Ora`;
+        sponsorNowBtn.className = "btn btn-secondary btn-xs";
+        sponsorNowBtn.innerHTML = `⚡ Ora`;
         sponsorNowBtn.title = "Crea subito l'inserzione su Meta Ads per questo post";
         sponsorNowBtn.addEventListener("click", () => sponsorTimelinePostNow(item));
         actions.appendChild(sponsorNowBtn);
@@ -2338,8 +2390,8 @@ function renderTimelineStream() {
         openLink.href = item.link;
         openLink.target = "_blank";
         openLink.rel = "noopener noreferrer";
-        openLink.className = "btn btn-ghost btn-sm";
-        openLink.innerHTML = `🔗 Apri`;
+        openLink.className = "btn btn-ghost btn-xs";
+        openLink.innerHTML = `🔗 Post`;
         actions.appendChild(openLink);
       }
 
@@ -2373,7 +2425,15 @@ async function togglePostFlow(postId, included) {
     const statusPill = wrapper.querySelector(".timeline-status-badge");
     if (statusPill) {
       statusPill.className = `timeline-status-badge ${newStatus.toLowerCase()}`;
-      statusPill.innerHTML = included ? `🟢 Incluso nel Flow (Verrà Sponsorizzato)` : `⛔ Escluso dal Flow (Non Sponsorizzare)`;
+      statusPill.innerHTML = included ? `🟢 Nel Flow` : `⚪ Escluso`;
+    }
+    const toggleLabel = wrapper.querySelector(".flow-toggle-label");
+    if (toggleLabel) {
+      toggleLabel.textContent = included ? "Sponsorizza Post" : "Non Sponsorizzare";
+    }
+    const checkbox = wrapper.querySelector(".flow-toggle-checkbox");
+    if (checkbox && checkbox.checked !== included) {
+      checkbox.checked = included;
     }
   }
 
@@ -2827,6 +2887,32 @@ function setupTimelineListeners() {
   // Bulk actions
   dom.timelineIncludeAllBtn?.addEventListener("click", () => bulkToggleFlow("INCLUDED"));
   dom.timelineExcludeAllBtn?.addEventListener("click", () => bulkToggleFlow("EXCLUDED"));
+
+  // Horizontal flow rail navigation
+  dom.timelineScrollPrevBtn?.addEventListener("click", () => {
+    dom.timelineStreamWrapper?.scrollBy({ left: -340, behavior: "smooth" });
+  });
+  dom.timelineScrollNextBtn?.addEventListener("click", () => {
+    dom.timelineStreamWrapper?.scrollBy({ left: 340, behavior: "smooth" });
+  });
+  dom.timelineScrollTodayBtn?.addEventListener("click", () => {
+    const todayEl = dom.timelineStream?.querySelector(".timeline-date-group[data-is-today='true']");
+    if (todayEl) {
+      todayEl.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+    } else {
+      dom.timelineStreamWrapper?.scrollTo({ left: 0, behavior: "smooth" });
+    }
+  });
+
+  // Wheel horizontal scrolling on stream wrapper
+  if (dom.timelineStreamWrapper) {
+    dom.timelineStreamWrapper.addEventListener("wheel", (e) => {
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        e.preventDefault();
+        dom.timelineStreamWrapper.scrollLeft += e.deltaY;
+      }
+    }, { passive: false });
+  }
 }
 
 function setupPubblieModalListeners() {
