@@ -162,6 +162,82 @@ button, input, select, textarea {
   gap: 10px;
 }
 
+/* Header Next Check Countdown Badge */
+.header-next-check-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.08);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-full);
+  padding: 5px 12px;
+  font-size: 0.8rem;
+  color: var(--text-main);
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.header-next-check-badge:hover {
+  background: rgba(16, 185, 129, 0.14);
+  border-color: rgba(16, 185, 129, 0.4);
+  box-shadow: 0 0 12px rgba(16, 185, 129, 0.15);
+}
+
+.timer-badge-icon {
+  font-size: 0.9rem;
+}
+
+.timer-badge-content {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.timer-badge-label {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+
+.timer-badge-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #34d399;
+  letter-spacing: 0.02em;
+}
+
+.timer-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #10b981;
+  box-shadow: 0 0 8px #10b981;
+  display: inline-block;
+  animation: timer-pulse-anim 2s infinite ease-in-out;
+}
+
+.timer-pulse-dot.due {
+  background: #f59e0b;
+  box-shadow: 0 0 10px #f59e0b;
+  animation: timer-pulse-fast 0.8s infinite ease-in-out;
+}
+
+.timer-pulse-dot.idle {
+  background: #64748b;
+  box-shadow: none;
+  animation: none;
+}
+
+@keyframes timer-pulse-anim {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.6; }
+}
+
+@keyframes timer-pulse-fast {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.4; }
+}
+
 /* ----------------------------------------------------
    BUTTONS & CONTROLS
 ---------------------------------------------------- */
@@ -289,7 +365,7 @@ button, input, select, textarea {
 ---------------------------------------------------- */
 .kpi-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 16px;
   margin-bottom: 28px;
 }
@@ -306,6 +382,37 @@ button, input, select, textarea {
 .kpi-card:hover {
   border-color: rgba(255, 255, 255, 0.14);
   transform: translateY(-2px);
+}
+
+/* KPI Timer Card Special Design */
+.kpi-card-timer {
+  border-color: rgba(16, 185, 129, 0.35);
+  background: linear-gradient(145deg, rgba(16, 185, 129, 0.05) 0%, var(--bg-surface) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.kpi-card-timer::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, #10b981, #06b6d4, #10b981);
+  background-size: 200% 100%;
+  animation: timer-border-shimmer 3s infinite linear;
+}
+
+@keyframes timer-border-shimmer {
+  0% { background-position: 0% 0%; }
+  100% { background-position: 200% 0%; }
+}
+
+.timer-display {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  color: #34d399 !important;
+  letter-spacing: -0.01em;
 }
 
 .kpi-label {
@@ -494,10 +601,51 @@ button, input, select, textarea {
   padding-top: 14px;
 }
 
+.auto-status-info-col {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  overflow: hidden;
+}
+
+.auto-status-last-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.auto-card-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+
+.timer-card-icon {
+  font-size: 0.8rem;
+}
+
+.card-countdown {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 700;
+  color: #34d399;
+}
+
+.card-countdown.due {
+  color: #f59e0b;
+}
+
+.card-countdown.paused {
+  color: var(--text-dim);
+}
+
 .auto-actions {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 /* Empty State */

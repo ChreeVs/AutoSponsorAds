@@ -1,5 +1,42 @@
 const db = require("./db");
 
+function normalizeContentText(str) {
+  if (!str) return "";
+  return String(str)
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF\u00A0\u2060]/g, " ")
+    .replace(/[＃﹟]/g, "#")
+    .trim();
+}
+
+function parseFilterKeywords(filterKeywords) {
+  if (!filterKeywords || !filterKeywords.trim()) return [];
+  const cleaned = normalizeContentText(filterKeywords);
+  // Split by commas, semicolons, newlines first
+  const parts = cleaned.split(/[,;\r\n]+/);
+  const keywords = [];
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    // If the part contains multiple space-separated hashtags like '#sponsor #adv', split them
+    if (trimmed.includes("#")) {
+      const tags = trimmed.match(/#[^\s#]+/g);
+      if (tags && tags.length > 1) {
+        tags.forEach(t => keywords.push(t.toLowerCase().trim()));
+        const rest = trimmed.replace(/#[^\s#]+/g, " ").trim();
+        if (rest) keywords.push(rest.toLowerCase());
+        continue;
+      }
+    }
+    keywords.push(trimmed.toLowerCase());
+  }
+  return keywords.filter(Boolean);
+}
+
+function escapeRegexPattern(string) {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 class AutomationEngine {
   constructor(metaService) {
     this.meta = metaService;
@@ -25,19 +62,26 @@ class AutomationEngine {
   }
 
   matchesKeywords(text, filterKeywords) {
-    if (!filterKeywords || !filterKeywords.trim()) return true;
-    const keywords = filterKeywords.split(",").map(k => k.trim().toLowerCase()).filter(Boolean);
+    const keywords = parseFilterKeywords(filterKeywords);
     if (!keywords.length) return true;
-    const lower = (text || "").toLowerCase();
-    return keywords.some(k => lower.includes(k));
+    const target = normalizeContentText(text).toLowerCase();
+    if (!target) return false;
+
+    return keywords.some(k => {
+      if (k.startsWith("#")) {
+        const tagBody = escapeRegexPattern(k.slice(1));
+        const regex = new RegExp("#" + tagBody + "(?![\\p{L}\\p{N}_])", "iu");
+        return regex.test(target);
+      }
+      const wordBody = escapeRegexPattern(k);
+      const regex = new RegExp("(?:#|\\b)" + wordBody + "(?![\\p{L}\\p{N}_])", "iu");
+      return regex.test(target);
+    });
   }
 
   shouldExclude(text, excludeKeywords) {
     if (!excludeKeywords || !excludeKeywords.trim()) return false;
-    const keywords = excludeKeywords.split(",").map(k => k.trim().toLowerCase()).filter(Boolean);
-    if (!keywords.length) return false;
-    const lower = (text || "").toLowerCase();
-    return keywords.some(k => lower.includes(k));
+    return this.matchesKeywords(text, excludeKeywords);
   }
 
   async findMatchingTimelineDecision(post) {
@@ -110,7 +154,7 @@ class AutomationEngine {
         const payload = await this.meta.getInstagramMedia(automation.source_id, automation.page_id, 25);
         rawPosts = (payload.data || []).map(p => ({
           id: p.id,
-          message: p.caption || "",
+          message: normalizeContentText(p.caption || ""),
           permalink: p.permalink || "",
           createdTime: p.timestamp
         }));
@@ -154,16 +198,16 @@ class AutomationEngine {
           continue;
         }
 
-        // 3. Check keywords/hashtags filter (inclusion) - bypassed if explicitly marked INCLUDED on timeline
-        const isExplicitlyIncluded = timelineDecision && timelineDecision.sponsorship_status === "INCLUDED";
-        if (!isExplicitlyIncluded && !this.matchesKeywords(post.message, automation.filter_keywords)) {
+        // 3. Check keywords/hashtags filter (inclusion)
+        if (!this.matchesKeywords(post.message, automation.filter_keywords)) {
+          console.log(`[ENGINE] Post ${post.id} (${automation.platform}) saltato: non contiene gli hashtag/keyword richiesti ("${automation.filter_keywords}")`);
           report.skippedCount++;
           continue;
         }
 
         // 3b. Check exclusion filter (hashtags or keywords that prevent sponsoring)
         if (this.shouldExclude(post.message, automation.exclude_keywords)) {
-          console.log(`[ENGINE] Post ${post.id} escluso da sponsorizzazione per filtro hashtag/keyword: "${automation.exclude_keywords}"`);
+          console.log(`[ENGINE] Post ${post.id} (${automation.platform}) escluso da sponsorizzazione per filtro esclusione: "${automation.exclude_keywords}"`);
           report.skippedCount++;
           continue;
         }
@@ -429,6 +473,60 @@ class AutomationEngine {
     if (this.schedulerTimer) {
       clearInterval(this.schedulerTimer);
       this.schedulerTimer = null;
+    }
+  }
+
+  async getNextCheckInfo() {
+    try {
+      const automations = await db.getAutomations();
+      const active = automations.filter(a => a.enabled);
+      if (!active.length) {
+        return {
+          hasActive: false,
+          isRunning: this.isRunning,
+          nextDueMs: null,
+          nextCheckDate: null,
+          targetAutomation: null,
+          activeCount: 0,
+          totalCount: automations.length
+        };
+      }
+
+      const now = Date.now();
+      let earliestNextCheck = Infinity;
+      let earliestAuto = null;
+
+      for (const auto of active) {
+        const intervalMs = (auto.check_interval_hours || 12) * 3600 * 1000;
+        const lastCheck = auto.last_checked_at ? new Date(auto.last_checked_at).getTime() : 0;
+        const nextCheck = lastCheck ? (lastCheck + intervalMs) : now;
+        if (nextCheck < earliestNextCheck) {
+          earliestNextCheck = nextCheck;
+          earliestAuto = auto;
+        }
+      }
+
+      const remainingMs = Math.max(0, earliestNextCheck - now);
+      return {
+        hasActive: true,
+        isRunning: this.isRunning,
+        nextDueMs: remainingMs,
+        nextCheckDate: earliestNextCheck < Infinity ? new Date(earliestNextCheck).toISOString() : null,
+        targetAutomation: earliestAuto ? {
+          id: earliestAuto.id,
+          name: earliestAuto.name,
+          platform: earliestAuto.platform
+        } : null,
+        activeCount: active.length,
+        totalCount: automations.length
+      };
+    } catch (err) {
+      console.warn("[ENGINE] Errore calcolo nextCheckInfo:", err.message);
+      return {
+        hasActive: false,
+        isRunning: this.isRunning,
+        error: err.message
+      };
     }
   }
 }

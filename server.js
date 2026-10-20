@@ -318,6 +318,7 @@ async function handleApi(req, res, url) {
     if (url.pathname === "/api/status" && req.method === "GET") {
       const automations = await db.getAutomations();
       const tokenHealth = await metaService.checkTokenHealth();
+      const scheduler = await engine.getNextCheckInfo();
       return json(res, 200, {
         dbType: db.getDbType(),
         totalAutomations: automations.length,
@@ -328,7 +329,8 @@ async function handleApi(req, res, url) {
         hasToken: Boolean(metaService.token()),
         tokenHealth,
         uptimeSeconds: Math.round(process.uptime()),
-        nodeVersion: process.version
+        nodeVersion: process.version,
+        scheduler
       });
     }
 
@@ -350,7 +352,19 @@ async function handleApi(req, res, url) {
     // -------------------------------------------------------------------------
     if (url.pathname === "/api/automations" && req.method === "GET") {
       const list = await db.getAutomations();
-      return json(res, 200, { data: list });
+      const now = Date.now();
+      const enriched = list.map(item => {
+        const intervalMs = (item.check_interval_hours || 12) * 3600 * 1000;
+        const lastCheck = item.last_checked_at ? new Date(item.last_checked_at).getTime() : 0;
+        const nextCheckMs = lastCheck ? lastCheck + intervalMs : now;
+        return {
+          ...item,
+          next_check_at: new Date(nextCheckMs).toISOString(),
+          seconds_until_next_check: Math.max(0, Math.round((nextCheckMs - now) / 1000)),
+          is_due: now >= nextCheckMs
+        };
+      });
+      return json(res, 200, { data: enriched });
     }
 
     if (url.pathname === "/api/automations" && req.method === "POST") {

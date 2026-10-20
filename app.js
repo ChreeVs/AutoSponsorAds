@@ -129,7 +129,7 @@ const dom = {
   emptyCreateBtn: document.getElementById("emptyCreateBtn"),
   refreshAutomationsBtn: document.getElementById("refreshAutomationsBtn"),
 
-  // KPIs
+  // KPIs & Timers
   kpiActiveAutomations: document.getElementById("kpiActiveAutomations"),
   kpiTotalAutomations: document.getElementById("kpiTotalAutomations"),
   kpiProcessedPosts: document.getElementById("kpiProcessedPosts"),
@@ -137,6 +137,13 @@ const dom = {
   kpiDbStatus: document.getElementById("kpiDbStatus"),
   kpiMetaStatus: document.getElementById("kpiMetaStatus"),
   kpiMetaIndicator: document.getElementById("kpiMetaIndicator"),
+  kpiNextCheckCard: document.getElementById("kpiNextCheckCard"),
+  kpiNextCheckTimer: document.getElementById("kpiNextCheckTimer"),
+  kpiNextCheckSub: document.getElementById("kpiNextCheckSub"),
+  kpiNextCheckIndicator: document.getElementById("kpiNextCheckIndicator"),
+  headerNextCheckBadge: document.getElementById("headerNextCheckBadge"),
+  headerCountdownTimer: document.getElementById("headerCountdownTimer"),
+  headerTimerDot: document.getElementById("headerTimerDot"),
 
   // Automations Grid
   automationsGrid: document.getElementById("automationsGrid"),
@@ -427,6 +434,11 @@ function renderAutomationsGrid() {
     const platformClass = isFB ? "facebook" : "instagram";
     const platformIcon = isFB ? "📘" : "📸";
 
+    const intervalHours = item.check_interval_hours || 12;
+    const intervalMs = intervalHours * 3600 * 1000;
+    const lastCheckedMs = item.last_checked_at ? new Date(item.last_checked_at).getTime() : 0;
+    const nextCheckMs = lastCheckedMs ? (lastCheckedMs + intervalMs) : Date.now();
+
     const lastChecked = item.last_checked_at 
       ? new Date(item.last_checked_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" })
       : "Mai eseguito";
@@ -492,9 +504,15 @@ function renderAutomationsGrid() {
       </div>
 
       <div class="auto-status-footer">
-        <div>
-          <span>Ultimo: ${lastChecked}</span>
-          ${item.last_run_status !== "IDLE" ? `<span class="${statusBadgeClass}" style="margin-left: 6px;">${item.last_run_status}</span>` : ""}
+        <div class="auto-status-info-col">
+          <div class="auto-status-last-line">
+            <span>Ultimo: ${lastChecked}</span>
+            ${item.last_run_status !== "IDLE" ? `<span class="${statusBadgeClass}" style="margin-left: 6px;">${item.last_run_status}</span>` : ""}
+          </div>
+          <div class="auto-card-timer-row">
+            <span class="timer-card-icon">⏱️</span>
+            <span>Prossimo: <strong class="card-countdown" data-auto-id="${item.id}" data-next-ms="${nextCheckMs}" data-enabled="${item.enabled ? 'true' : 'false'}">--:--:--</strong></span>
+          </div>
         </div>
         <div class="auto-actions">
           <button class="btn btn-secondary btn-sm run-single-btn" data-id="${item.id}" title="Avvia controllo adesso">
@@ -586,6 +604,8 @@ function renderAutomationsGrid() {
       }
     });
   });
+
+  updateNextCheckTickers();
 }
 
 function showRunReportModal(title, report) {
@@ -660,6 +680,104 @@ function updateKpis() {
   dom.kpiActiveAutomations.textContent = activeCount;
   dom.kpiTotalAutomations.textContent = `su ${totalCount} totali`;
   dom.badgeActiveCount.textContent = activeCount;
+  updateNextCheckTickers();
+}
+
+// -----------------------------------------------------------------------------
+// Real-time Countdown Timer Controller
+// -----------------------------------------------------------------------------
+let nextCheckTickerInterval = null;
+
+function formatCountdown(ms) {
+  if (ms <= 0) return "Dovuto ora ⚡";
+  const totalSeconds = Math.floor(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0) {
+    return `${days}g ${hours}h ${minutes}m`;
+  }
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+}
+
+function updateNextCheckTickers() {
+  const now = Date.now();
+  const activeAutomations = (state.automations || []).filter(a => a.enabled);
+
+  // 1. Update individual automation cards
+  document.querySelectorAll(".card-countdown[data-next-ms]").forEach(el => {
+    const isEnabled = el.getAttribute("data-enabled") === "true";
+    if (!isEnabled) {
+      el.textContent = "Disattivata";
+      el.className = "card-countdown paused";
+      return;
+    }
+    const nextMs = Number(el.getAttribute("data-next-ms")) || 0;
+    const diff = nextMs - now;
+    if (diff <= 0) {
+      el.textContent = "Dovuto ora ⚡";
+      el.className = "card-countdown due";
+    } else {
+      el.textContent = formatCountdown(diff);
+      el.className = "card-countdown";
+    }
+  });
+
+  // 2. Global next check across all active automations
+  if (!activeAutomations.length) {
+    if (dom.headerCountdownTimer) dom.headerCountdownTimer.textContent = "In pausa";
+    if (dom.headerTimerDot) dom.headerTimerDot.className = "timer-pulse-dot idle";
+    if (dom.kpiNextCheckTimer) dom.kpiNextCheckTimer.textContent = "--:--:--";
+    if (dom.kpiNextCheckSub) dom.kpiNextCheckSub.textContent = "Nessuna regola attiva";
+    if (dom.kpiNextCheckIndicator) dom.kpiNextCheckIndicator.className = "status-indicator";
+    return;
+  }
+
+  let earliestNextCheck = Infinity;
+  let earliestAuto = null;
+
+  for (const auto of activeAutomations) {
+    const intervalMs = (auto.check_interval_hours || 12) * 3600 * 1000;
+    const lastCheck = auto.last_checked_at ? new Date(auto.last_checked_at).getTime() : 0;
+    const nextCheck = lastCheck ? (lastCheck + intervalMs) : now;
+    if (nextCheck < earliestNextCheck) {
+      earliestNextCheck = nextCheck;
+      earliestAuto = auto;
+    }
+  }
+
+  const remainingMs = Math.max(0, earliestNextCheck - now);
+  const formatted = formatCountdown(remainingMs);
+
+  if (dom.headerCountdownTimer) {
+    dom.headerCountdownTimer.textContent = formatted;
+  }
+  if (dom.headerTimerDot) {
+    dom.headerTimerDot.className = remainingMs <= 0 ? "timer-pulse-dot due" : "timer-pulse-dot active";
+  }
+
+  if (dom.kpiNextCheckTimer) {
+    dom.kpiNextCheckTimer.textContent = formatted;
+  }
+  if (dom.kpiNextCheckSub) {
+    if (remainingMs <= 0) {
+      dom.kpiNextCheckSub.textContent = `⚡ Dovuto per "${earliestAuto?.name || 'Regola'}"`;
+    } else {
+      dom.kpiNextCheckSub.textContent = `Regola: ${earliestAuto?.name || 'In attesa'}`;
+    }
+  }
+  if (dom.kpiNextCheckIndicator) {
+    dom.kpiNextCheckIndicator.className = remainingMs <= 0 ? "status-indicator err" : "status-indicator ok";
+  }
+}
+
+function startNextCheckTicker() {
+  if (nextCheckTickerInterval) clearInterval(nextCheckTickerInterval);
+  updateNextCheckTickers();
+  nextCheckTickerInterval = setInterval(updateNextCheckTickers, 1000);
 }
 
 // -----------------------------------------------------------------------------
@@ -1335,9 +1453,20 @@ function truncate(text, max = 110) {
   return clean.length <= max ? clean : `${clean.slice(0, max - 1)}...`;
 }
 
+function normalizeContentText(str) {
+  if (!str) return "";
+  return String(str)
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF\u00A0\u2060]/g, " ")
+    .replace(/[＃﹟]/g, "#")
+    .trim();
+}
+
 function matchesFilter(text, query) {
   if (!query) return true;
-  return String(text || "").toLowerCase().includes(query.toLowerCase().trim());
+  const cleanQ = normalizeContentText(query).toLowerCase();
+  const cleanT = normalizeContentText(text).toLowerCase();
+  return cleanT.includes(cleanQ);
 }
 
 function formatAdName(pattern, { platform, post, fallback }) {
@@ -2042,6 +2171,7 @@ async function loadInitialData() {
     checkPubblieStatus(),
     loadTimelineFeed()
   ]);
+  startNextCheckTicker();
 }
 
 // -----------------------------------------------------------------------------

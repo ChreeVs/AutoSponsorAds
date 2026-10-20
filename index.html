@@ -92,6 +92,14 @@
         </nav>
 
         <div class="nav-actions">
+          <div class="header-next-check-badge" id="headerNextCheckBadge" title="Tempo rimanente al prossimo controllo automatico delle automazioni">
+            <span class="timer-pulse-dot" id="headerTimerDot"></span>
+            <span class="timer-badge-icon">⏱️</span>
+            <div class="timer-badge-content">
+              <span class="timer-badge-label">Prossimo check</span>
+              <strong class="timer-badge-value" id="headerCountdownTimer">--:--:--</strong>
+            </div>
+          </div>
           <button class="btn btn-secondary btn-sm" id="globalRunBtn" type="button" title="Avvia subito il controllo di tutte le automazioni">
             <span class="spinner" id="globalRunSpinner" hidden></span>
             <span id="globalRunText">▶ Esegui Tutto Ora</span>
@@ -126,6 +134,14 @@
               <strong class="kpi-value" id="kpiActiveAutomations">0</strong>
               <span class="kpi-sub" id="kpiTotalAutomations">su 0 totali</span>
             </div>
+          </div>
+          <div class="kpi-card kpi-card-timer" id="kpiNextCheckCard">
+            <span class="kpi-label">⏳ Prossimo Check</span>
+            <div class="kpi-value-row">
+              <strong class="kpi-value timer-display" id="kpiNextCheckTimer">--:--:--</strong>
+              <span class="status-indicator" id="kpiNextCheckIndicator"></span>
+            </div>
+            <span class="kpi-sub" id="kpiNextCheckSub">Inizializzazione...</span>
           </div>
           <div class="kpi-card">
             <span class="kpi-label">Post Sponsorizzati in Auto</span>
