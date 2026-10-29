@@ -94,23 +94,50 @@ let visiblePostIds = [];
 // -----------------------------------------------------------------------------
 // API Helper
 // -----------------------------------------------------------------------------
-async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { "Content-Type": "application/json", ...options.headers },
-    ...options
-  });
-  if (response.status === 401 && !path.startsWith("/api/auth/")) {
-    showAuthOverlay(false);
-    throw new Error("Accesso non autorizzato. Effettua il login.");
-  }
-  const payload = await response.json();
-  if (!response.ok || payload.error) {
-    const errorMsg = payload.error?.message || payload.error || `Errore HTTP ${response.status}`;
-    const err = new Error(errorMsg);
-    err.meta = payload.meta || payload;
+async function api(path, options = {}, isRetry = false) {
+  try {
+    const response = await fetch(path, {
+      headers: { "Content-Type": "application/json", ...options.headers },
+      ...options
+    });
+
+    if (response.status === 401 && !path.startsWith("/api/auth/")) {
+      showAuthOverlay(false);
+      throw new Error("Accesso non autorizzato. Effettua il login.");
+    }
+
+    // If Render free-tier is restarting or deploying, it returns HTML 502/503
+    if ((response.status === 502 || response.status === 503 || response.status === 504) && !isRetry) {
+      await new Promise(r => setTimeout(r, 2500));
+      return api(path, options, true);
+    }
+
+    const text = await response.text();
+    let payload = null;
+    try {
+      payload = text ? JSON.parse(text) : {};
+    } catch {
+      // If received HTML from Render while waking up, retry once
+      if (!isRetry) {
+        await new Promise(r => setTimeout(r, 2500));
+        return api(path, options, true);
+      }
+      throw new Error("Il server su Render si sta riavviando (deploy in corso). Riprova tra pochi istanti.");
+    }
+
+    if (!response.ok || payload.error) {
+      const errorMsg = payload.error?.message || payload.error || `Errore HTTP ${response.status}`;
+      const err = new Error(errorMsg);
+      err.meta = payload.meta || payload;
+      throw err;
+    }
+    return payload;
+  } catch (err) {
+    if (err.message && err.message.includes("Unexpected token '<'")) {
+      throw new Error("Il server su Render si sta riavviando (deploy in corso). Ricarica la pagina tra pochi secondi.");
+    }
     throw err;
   }
-  return payload;
 }
 
 // -----------------------------------------------------------------------------
@@ -2110,8 +2137,8 @@ function setupAuth() {
       return;
     }
 
-    if (isAuthSetupMode && password.length < 4) {
-      showAuthError("La password deve contenere almeno 4 caratteri.");
+    if (isAuthSetupMode && password.length < 8) {
+      showAuthError("La password deve contenere almeno 8 caratteri.");
       return;
     }
 

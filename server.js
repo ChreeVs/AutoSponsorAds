@@ -41,7 +41,19 @@ function loadEnv(filePath) {
     }, {});
 }
 
-function json(res, statusCode, payload) {
+function applySecurityHeaders(res, req = null) {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "geolocation=(), camera=(), microphone=()");
+  const isHttps = req ? isHttpsRequest(req) : false;
+  if (isHttps) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+}
+
+function json(res, statusCode, payload, req = null) {
+  if (req) applySecurityHeaders(res, req);
   const body = JSON.stringify(payload, null, 2);
   res.writeHead(statusCode, {
     "content-type": "application/json; charset=utf-8",
@@ -50,35 +62,160 @@ function json(res, statusCode, payload) {
   res.end(body);
 }
 
-async function readJsonBody(req) {
-  const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
-  const raw = Buffer.concat(chunks).toString("utf8");
-  return raw ? JSON.parse(raw) : {};
+async function readJsonBody(req, maxBytes = 2 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    let size = 0;
+    const chunks = [];
+    req.on("data", chunk => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        const err = new Error("Dimensione richiesta eccessiva (massimo 2MB consentiti).");
+        err.status = 413;
+        req.destroy(err);
+        return reject(err);
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
+      if (!raw || !raw.trim()) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        const err = new Error("Formato JSON della richiesta non valido.");
+        err.status = 400;
+        reject(err);
+      }
+    });
+    req.on("error", err => reject(err));
+  });
 }
 
-function checkCronAuth(req, url) {
-  if (!CRON_SECRET) return true;
+function checkCronAuth(req) {
+  if (!CRON_SECRET || typeof CRON_SECRET !== "string" || CRON_SECRET.trim().length === 0) {
+    console.warn("[Security] Richiesta CRON rifiutata: CRON_SECRET non configurato.");
+    return false;
+  }
   const authHeader = req.headers.authorization || "";
-  if (authHeader === `Bearer ${CRON_SECRET}`) return true;
-  const secretParam = url.searchParams.get("secret") || url.searchParams.get("key") || url.searchParams.get("token") || "";
-  if (secretParam === CRON_SECRET) return true;
-  return false;
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  const token = match ? match[1].trim() : (req.headers["x-cron-secret"] || "").trim();
+  if (!token) return false;
+
+  try {
+    const bufA = Buffer.from(token);
+    const bufB = Buffer.from(CRON_SECRET.trim());
+    if (bufA.length !== bufB.length) return false;
+    return crypto.timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
 }
 
 // -----------------------------------------------------------------------------
-// Authentication & Session Security
+// Authentication, Password Hashing & Session Security
 // -----------------------------------------------------------------------------
 const AUTH_SALT = "AutoSponsor_Salt_v2_";
 
+// Rate limiter in-memory per proteggere il login da brute-force
+const loginAttempts = new Map(); // ip -> { count, firstAttempt, blockedUntil }
+
+function getClientIp(req) {
+  const forwarded = req.headers["x-forwarded-for"];
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return req.socket.remoteAddress || "127.0.0.1";
+}
+
+function checkLoginRateLimit(req, maxAttempts = 5, windowMs = 5 * 60 * 1000, lockMs = 10 * 60 * 1000) {
+  const ip = getClientIp(req);
+  const now = Date.now();
+  const record = loginAttempts.get(ip) || { count: 0, firstAttempt: now, blockedUntil: 0 };
+
+  if (record.blockedUntil > now) {
+    const waitSec = Math.ceil((record.blockedUntil - now) / 1000);
+    return {
+      allowed: false,
+      ip,
+      error: `Troppi tentativi falliti. Accesso bloccato per sicurezza. Riprova tra ${waitSec} secondi.`
+    };
+  }
+
+  if (now - record.firstAttempt > windowMs) {
+    record.count = 0;
+    record.firstAttempt = now;
+    record.blockedUntil = 0;
+  }
+
+  loginAttempts.set(ip, record);
+  return { allowed: true, ip, record };
+}
+
+function recordFailedLogin(ip, maxAttempts = 5, lockMs = 10 * 60 * 1000) {
+  const now = Date.now();
+  const record = loginAttempts.get(ip) || { count: 0, firstAttempt: now, blockedUntil: 0 };
+  record.count += 1;
+  if (record.count >= maxAttempts) {
+    record.blockedUntil = now + lockMs;
+  }
+  loginAttempts.set(ip, record);
+}
+
+function resetLoginRateLimit(ip) {
+  loginAttempts.delete(ip);
+}
+
+function isHttpsRequest(req) {
+  return Boolean(req.socket && req.socket.encrypted) || req.headers["x-forwarded-proto"] === "https";
+}
+
+function getSessionCookieHeader(token, req, maxAge = 2592000) {
+  const secureFlag = isHttpsRequest(req) ? "; Secure" : "";
+  return `autosponsor_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAge}${secureFlag}`;
+}
+
+// PBKDF2 strong hashing con 100.000 iterazioni e salt randomico
 function hashPassword(pwd) {
-  return crypto.createHash("sha256").update(AUTH_SALT + pwd).digest("hex");
+  const salt = crypto.randomBytes(16).toString("hex");
+  const iterations = 100000;
+  const hash = crypto.pbkdf2Sync(pwd, salt, iterations, 32, "sha256").toString("hex");
+  return `pbkdf2:${salt}:${iterations}:${hash}`;
+}
+
+function verifyPassword(pwd, storedHash) {
+  if (!storedHash || !pwd) return false;
+  try {
+    if (storedHash.startsWith("pbkdf2:")) {
+      const parts = storedHash.split(":");
+      if (parts.length !== 4) return false;
+      const [, salt, iterationsStr, expectedHash] = parts;
+      const iterations = parseInt(iterationsStr, 10);
+      if (isNaN(iterations) || iterations < 10000) return false;
+      const actualHash = crypto.pbkdf2Sync(pwd, salt, iterations, 32, "sha256").toString("hex");
+      const actualBuf = Buffer.from(actualHash, "hex");
+      const expectedBuf = Buffer.from(expectedHash, "hex");
+      if (actualBuf.length !== expectedBuf.length) return false;
+      return crypto.timingSafeEqual(actualBuf, expectedBuf);
+    }
+
+    // Retrocompatibilità con i vecchi hash SHA-256
+    const legacyHash = crypto.createHash("sha256").update(AUTH_SALT + pwd).digest("hex");
+    const actualBuf = Buffer.from(legacyHash, "hex");
+    const expectedBuf = Buffer.from(storedHash, "hex");
+    if (actualBuf.length !== expectedBuf.length) return false;
+    return crypto.timingSafeEqual(actualBuf, expectedBuf);
+  } catch {
+    return false;
+  }
 }
 
 async function getMasterPasswordHash() {
   const envPwd = env.APP_PASSWORD || env.DASHBOARD_PASSWORD || "";
   if (envPwd && envPwd.trim()) {
-    return hashPassword(envPwd.trim());
+    const trimmed = envPwd.trim();
+    if (trimmed.startsWith("pbkdf2:") || trimmed.length === 64) {
+      return trimmed;
+    }
+    // Per variabile d'ambiente plain-text usiamo hash deterministico
+    return crypto.createHash("sha256").update(AUTH_SALT + trimmed).digest("hex");
   }
   const dbHash = await db.getSetting("APP_PASSWORD_HASH");
   return dbHash || null;
@@ -100,7 +237,7 @@ function verifySessionToken(token, passwordHash) {
   const issuedAt = Number(issuedAtStr);
   if (!issuedAt || isNaN(issuedAt)) return false;
 
-  const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 giorni di persistenza
+  const MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 giorni
   const now = Date.now();
   if (now - issuedAt > MAX_AGE_MS) return false;
   if (issuedAt > now + 60000) return false; // Clock skew protection
@@ -152,9 +289,12 @@ async function handleApi(req, res, url) {
     // -------------------------------------------------------------------------
     // CRON ENDPOINT (External cron bypasses session with CRON_SECRET)
     // -------------------------------------------------------------------------
-    if (url.pathname === "/api/cron/check-and-sponsor" && (req.method === "POST" || req.method === "GET")) {
-      if (!checkCronAuth(req, url)) {
-        return json(res, 401, { error: "Non autorizzato: token CRON_SECRET errato o mancante." });
+    if (url.pathname === "/api/cron/check-and-sponsor") {
+      if (req.method !== "POST" && req.method !== "GET") {
+        return json(res, 405, { error: "Metodo non consentito. Usa POST o GET." }, req);
+      }
+      if (!checkCronAuth(req)) {
+        return json(res, 401, { error: "Non autorizzato: token CRON_SECRET errato, mancante o non configurato." }, req);
       }
 
       const forceAll = url.searchParams.get("force") !== "false";
@@ -164,13 +304,13 @@ async function handleApi(req, res, url) {
         const result = await engine.runAllDueAutomations("EXTERNAL_CRON", forceAll);
         const verbose = url.searchParams.get("verbose") === "true";
         if (verbose) {
-          return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result });
+          return json(res, 200, { ok: true, timestamp: new Date().toISOString(), result }, req);
         }
         return json(res, 200, {
           ok: true,
           executed: result.executedCount || 0,
           active: result.totalActive || 0
-        });
+        }, req);
       }
 
       // Default ASYNC execution: respond immediately (<10ms) so external crons (cron-job.org) NEVER timeout!
@@ -179,7 +319,7 @@ async function handleApi(req, res, url) {
         status: "RUNNING",
         message: "Controllo automazioni avviato in background",
         timestamp: new Date().toISOString()
-      });
+      }, req);
 
       // Execute in background
       engine.runAllDueAutomations("EXTERNAL_CRON", forceAll).catch(err => {
@@ -199,18 +339,18 @@ async function handleApi(req, res, url) {
         ok: true,
         authenticated,
         setupRequired
-      });
+      }, req);
     }
 
     if (url.pathname === "/api/auth/setup" && req.method === "POST") {
       const currentMaster = await getMasterPasswordHash();
       if (currentMaster) {
-        return json(res, 400, { ok: false, error: "La master password è già stata configurata." });
+        return json(res, 400, { ok: false, error: "La master password è già stata configurata." }, req);
       }
       const body = await readJsonBody(req);
       const password = (body.password || "").trim();
-      if (!password || password.length < 4) {
-        return json(res, 400, { ok: false, error: "La password deve contenere almeno 4 caratteri." });
+      if (!password || password.length < 8) {
+        return json(res, 400, { ok: false, error: "La password deve contenere almeno 8 caratteri." }, req);
       }
       const newHash = hashPassword(password);
       await db.setSetting("APP_PASSWORD_HASH", newHash);
@@ -218,37 +358,46 @@ async function handleApi(req, res, url) {
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
-        "set-cookie": `autosponsor_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
+        "set-cookie": getSessionCookieHeader(sessionToken, req)
       });
       res.end(JSON.stringify({ ok: true, message: "Password configurata con successo!" }));
       return;
     }
 
     if (url.pathname === "/api/auth/login" && req.method === "POST") {
+      const rateCheck = checkLoginRateLimit(req);
+      if (!rateCheck.allowed) {
+        return json(res, 429, { ok: false, error: rateCheck.error }, req);
+      }
+
       const masterHash = await getMasterPasswordHash();
       if (!masterHash) {
-        return json(res, 400, { ok: false, error: "Configurazione password richiesta." });
+        return json(res, 400, { ok: false, error: "Configurazione password richiesta." }, req);
       }
       const body = await readJsonBody(req);
       const password = (body.password || "").trim();
-      const inputHash = hashPassword(password);
 
-      let isValid = false;
-      try {
-        isValid = crypto.timingSafeEqual(Buffer.from(inputHash, "hex"), Buffer.from(masterHash, "hex"));
-      } catch {
-        isValid = false;
-      }
+      const isValid = verifyPassword(password, masterHash);
 
       if (!isValid) {
-        return json(res, 401, { ok: false, error: "Password errata. Riprova." });
+        recordFailedLogin(rateCheck.ip);
+        return json(res, 401, { ok: false, error: "Password errata. Riprova." }, req);
+      }
+
+      // Success: reset fallimenti
+      resetLoginRateLimit(rateCheck.ip);
+
+      // Aggiornamento trasparente a PBKDF2 se l'hash memorizzato era nel vecchio formato
+      if (!masterHash.startsWith("pbkdf2:") && !env.APP_PASSWORD) {
+        const upgradedHash = hashPassword(password);
+        await db.setSetting("APP_PASSWORD_HASH", upgradedHash);
       }
 
       const sessionToken = createSessionToken(masterHash);
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
-        "set-cookie": `autosponsor_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
+        "set-cookie": getSessionCookieHeader(sessionToken, req)
       });
       res.end(JSON.stringify({ ok: true, message: "Accesso autorizzato!" }));
       return;
@@ -258,7 +407,7 @@ async function handleApi(req, res, url) {
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
-        "set-cookie": "autosponsor_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0"
+        "set-cookie": getSessionCookieHeader("", req, 0)
       });
       res.end(JSON.stringify({ ok: true, message: "Disconnessione effettuata." }));
       return;
@@ -266,27 +415,21 @@ async function handleApi(req, res, url) {
 
     if (url.pathname === "/api/auth/change-password" && req.method === "POST") {
       if (!await isSessionAuthenticated(req)) {
-        return json(res, 401, { ok: false, error: "Non autorizzato" });
+        return json(res, 401, { ok: false, error: "Non autorizzato" }, req);
       }
       const body = await readJsonBody(req);
       const currentPassword = (body.currentPassword || "").trim();
       const newPassword = (body.newPassword || "").trim();
 
-      if (!newPassword || newPassword.length < 4) {
-        return json(res, 400, { ok: false, error: "La nuova password deve contenere almeno 4 caratteri." });
+      if (!newPassword || newPassword.length < 8) {
+        return json(res, 400, { ok: false, error: "La nuova password deve contenere almeno 8 caratteri." }, req);
       }
 
       const masterHash = await getMasterPasswordHash();
-      const inputHash = hashPassword(currentPassword);
-      let isValid = false;
-      try {
-        isValid = crypto.timingSafeEqual(Buffer.from(inputHash, "hex"), Buffer.from(masterHash, "hex"));
-      } catch {
-        isValid = false;
-      }
+      const isValid = verifyPassword(currentPassword, masterHash);
 
       if (!isValid) {
-        return json(res, 400, { ok: false, error: "La password attuale non è corretta." });
+        return json(res, 400, { ok: false, error: "La password attuale non è corretta." }, req);
       }
 
       const newHash = hashPassword(newPassword);
@@ -295,7 +438,7 @@ async function handleApi(req, res, url) {
       res.writeHead(200, {
         "content-type": "application/json; charset=utf-8",
         "cache-control": "no-store",
-        "set-cookie": `autosponsor_session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`
+        "set-cookie": getSessionCookieHeader(sessionToken, req)
       });
       res.end(JSON.stringify({ ok: true, message: "Password aggiornata con successo!" }));
       return;
@@ -1096,9 +1239,22 @@ async function handleApi(req, res, url) {
 // OAUTH FLOW (Facebook Login)
 // -----------------------------------------------------------------------------
 async function handleOAuth(req, res, url) {
-  const appId = env.META_APP_ID || "1487594375621582";
-  const appSecret = env.META_APP_SECRET || "c5bdacb60e9268b584c504403eb452d1";
+  const appId = (env.META_APP_ID || "").trim();
+  const appSecret = (env.META_APP_SECRET || "").trim();
   const redirectUri = env.META_LOGIN_REDIRECT_URI || `http://${req.headers.host}/auth/callback`;
+
+  if (!appId || !appSecret) {
+    if (url.pathname.startsWith("/auth/")) {
+      res.writeHead(302, {
+        Location: `/?login_error=${encodeURIComponent("Credenziali Meta non configurate: imposta META_APP_ID e META_APP_SECRET nel file .env o nelle variabili d'ambiente.")}`
+      });
+      res.end();
+      return true;
+    }
+    return false;
+  }
+
+  const secureFlag = isHttpsRequest(req) ? "; Secure" : "";
 
   if (url.pathname === "/auth/facebook") {
     if (!await isSessionAuthenticated(req)) {
@@ -1106,12 +1262,20 @@ async function handleOAuth(req, res, url) {
       res.end();
       return true;
     }
+
+    // Protezione CSRF: generazione e salvataggio dello stato OAuth in cookie HttpOnly
+    const state = crypto.randomBytes(24).toString("hex");
     const oauthUrl = new URL(`https://www.facebook.com/${metaService.apiVersion}/dialog/oauth`);
     oauthUrl.searchParams.set("client_id", appId);
     oauthUrl.searchParams.set("redirect_uri", redirectUri);
+    oauthUrl.searchParams.set("state", state);
     oauthUrl.searchParams.set("scope", env.META_LOGIN_SCOPE || "ads_management,ads_read,business_management,pages_show_list,pages_read_engagement,instagram_basic");
     oauthUrl.searchParams.set("response_type", "code");
-    res.writeHead(302, { Location: oauthUrl.toString() });
+
+    res.writeHead(302, {
+      Location: oauthUrl.toString(),
+      "Set-Cookie": `oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600${secureFlag}`
+    });
     res.end();
     return true;
   }
@@ -1122,10 +1286,28 @@ async function handleOAuth(req, res, url) {
       res.end();
       return true;
     }
+
+    const cookies = parseCookies(req);
+    const expectedState = cookies.oauth_state;
+    const returnedState = url.searchParams.get("state");
+    const clearStateCookie = `oauth_state=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secureFlag}`;
+
+    if (!expectedState || !returnedState || expectedState !== returnedState) {
+      res.writeHead(302, {
+        Location: `/?login_error=${encodeURIComponent("Verifica di sicurezza OAuth CSRF fallita: sessione non valida o scaduta. Riprova.")}`,
+        "Set-Cookie": clearStateCookie
+      });
+      res.end();
+      return true;
+    }
+
     const code = url.searchParams.get("code");
     const error = url.searchParams.get("error_description") || url.searchParams.get("error");
     if (error || !code) {
-      res.writeHead(302, { Location: `/?login_error=${encodeURIComponent(error || "Codice mancante")}` });
+      res.writeHead(302, {
+        Location: `/?login_error=${encodeURIComponent(error || "Codice autorizzazione mancante")}`,
+        "Set-Cookie": clearStateCookie
+      });
       res.end();
       return true;
     }
@@ -1141,7 +1323,7 @@ async function handleOAuth(req, res, url) {
       const tokenData = await tokenRes.json();
 
       if (!tokenRes.ok || tokenData.error) {
-        throw new Error(tokenData.error?.message || "Impossibile scambiare il codice");
+        throw new Error(tokenData.error?.message || "Impossibile scambiare il codice di autorizzazione con Meta");
       }
 
       // Exchange short-lived token for 60-day Long-Lived Token
@@ -1167,11 +1349,17 @@ async function handleOAuth(req, res, url) {
       metaService.updateConfig({ META_ACCESS_TOKEN: finalToken });
       console.log("[Auth] Nuovo token Meta memorizzato nel database!");
 
-      res.writeHead(302, { Location: "/?login=ok" });
+      res.writeHead(302, {
+        Location: "/?login=ok",
+        "Set-Cookie": clearStateCookie
+      });
       res.end();
     } catch (authErr) {
       console.error("[Auth Error]", authErr);
-      res.writeHead(302, { Location: `/?login_error=${encodeURIComponent(authErr.message)}` });
+      res.writeHead(302, {
+        Location: `/?login_error=${encodeURIComponent(authErr.message)}`,
+        "Set-Cookie": clearStateCookie
+      });
       res.end();
     }
     return true;
@@ -1180,34 +1368,94 @@ async function handleOAuth(req, res, url) {
   return false;
 }
 
-function serveStatic(req, res, url) {
-  const requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
-  const filePath = path.normalize(path.join(ROOT, requestedPath));
+// Whitelist rigorosa di risorse pubbliche accessibili dal browser
+const PUBLIC_FILE_WHITELIST = new Set([
+  "/",
+  "/index.html",
+  "/styles.css",
+  "/app.js",
+  "/favicon.ico"
+]);
 
-  if (!filePath.startsWith(ROOT)) {
-    res.writeHead(403);
-    res.end("Forbidden");
+function serveStatic(req, res, url) {
+  applySecurityHeaders(res, req);
+
+  // Consentiti esclusivamente metodi di lettura GET e HEAD
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    res.writeHead(405, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Metodo non consentito");
     return;
   }
 
-  fs.readFile(filePath, (error, content) => {
-    if (error) {
-      res.writeHead(404);
-      res.end("Not found");
+  const pathname = url.pathname;
+
+  // Protezione anti-traversal e blocco file nascosti (.env, .git, ecc.)
+  if (pathname.includes("\0") || pathname.includes("..") || pathname.split("/").some(part => part.startsWith("."))) {
+    res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Accesso negato");
+    return;
+  }
+
+  let relativePath = null;
+  if (PUBLIC_FILE_WHITELIST.has(pathname)) {
+    relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\//, "");
+  } else if (pathname.startsWith("/assets/")) {
+    const filename = path.basename(pathname);
+    // Solo caratteri alfanumerici e trattini consentiti per gli asset statici
+    if (/^[a-zA-Z0-9_\-\.]+$/.test(filename)) {
+      relativePath = path.join("assets", filename);
+    }
+  }
+
+  if (!relativePath) {
+    res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Risorsa non trovata");
+    return;
+  }
+
+  const filePath = path.normalize(path.join(ROOT, relativePath));
+
+  // Controllo perimetrale sandbox ROOT
+  if (!filePath.startsWith(ROOT)) {
+    res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+    res.end("Accesso negato");
+    return;
+  }
+
+  fs.stat(filePath, (err, stats) => {
+    if (err || !stats.isFile()) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Risorsa non trovata");
       return;
     }
 
-    const ext = path.extname(filePath);
+    const ext = path.extname(filePath).toLowerCase();
+
+    // Blocco categorico aggiuntivo per estensioni riservate al server
+    const forbiddenExts = [".env", ".db", ".json", ".yaml", ".yml", ".md", ".lock", ".sh", ".ps1"];
+    if (forbiddenExts.includes(ext) || (ext === ".js" && relativePath !== "app.js")) {
+      res.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+      res.end("Accesso negato");
+      return;
+    }
+
     res.writeHead(200, {
       "content-type": mimeTypes[ext] || "application/octet-stream",
-      "cache-control": "no-store"
+      "cache-control": ext === ".html" ? "no-cache" : "public, max-age=3600"
     });
-    res.end(content);
+
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+
+    fs.createReadStream(filePath).pipe(res);
   });
 }
 
 const server = http.createServer(async (req, res) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
+  applySecurityHeaders(res, req);
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
   if (url.pathname.startsWith("/auth/")) {
     const handled = await handleOAuth(req, res, url);
