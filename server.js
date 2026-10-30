@@ -91,14 +91,20 @@ async function readJsonBody(req, maxBytes = 2 * 1024 * 1024) {
   });
 }
 
-function checkCronAuth(req) {
+function checkCronAuth(req, url = null) {
   if (!CRON_SECRET || typeof CRON_SECRET !== "string" || CRON_SECRET.trim().length === 0) {
     console.warn("[Security] Richiesta CRON rifiutata: CRON_SECRET non configurato.");
     return false;
   }
   const authHeader = req.headers.authorization || "";
   const match = authHeader.match(/^Bearer\s+(.+)$/i);
-  const token = match ? match[1].trim() : (req.headers["x-cron-secret"] || "").trim();
+  let token = match ? match[1].trim() : (req.headers["x-cron-secret"] || "").trim();
+
+  // Supporta anche il passaggio del secret come parametro URL (?secret=, ?key=, ?token=) per massima compatibilita con cron-job.org
+  if (!token && url && url.searchParams) {
+    token = (url.searchParams.get("secret") || url.searchParams.get("key") || url.searchParams.get("token") || "").trim();
+  }
+
   if (!token) return false;
 
   try {
@@ -293,7 +299,7 @@ async function handleApi(req, res, url) {
       if (req.method !== "POST" && req.method !== "GET") {
         return json(res, 405, { error: "Metodo non consentito. Usa POST o GET." }, req);
       }
-      if (!checkCronAuth(req)) {
+      if (!checkCronAuth(req, url)) {
         return json(res, 401, { error: "Non autorizzato: token CRON_SECRET errato, mancante o non configurato." }, req);
       }
 
