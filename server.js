@@ -672,7 +672,9 @@ async function handleApi(req, res, url) {
           };
 
           if (post.platform === "Facebook") {
-            creativeParams.object_story_id = post.sourcePostId;
+            const fbPostId = String(post.sourcePostId || post.id || "");
+            const pageId = post.pageId;
+            creativeParams.object_story_id = (fbPostId.includes("_") || !pageId) ? fbPostId : `${pageId}_${fbPostId}`;
           } else {
             const page = metaService.pageForInstagramId(post.instagramAccountId);
             creativeParams.object_id = page?.id || post.pageId;
@@ -1174,22 +1176,134 @@ async function handleApi(req, res, url) {
     if (url.pathname === "/api/timeline/sponsor-now" && req.method === "POST") {
       const body = await readJsonBody(req);
       if (!body.adAccountId || !body.adsetId || !body.postId) {
-        return json(res, 400, { error: "adAccountId, adsetId e postId sono obbligatori." });
+        return json(res, 400, { error: "adAccountId, adsetId e postId sono obbligatori." }, req);
       }
 
-      const adName = body.adName || `ADV - ${body.platform || "Post"} - ${String(body.postId).slice(-6)}`;
+      // 1. Risoluzione parametri di mapping e canali Meta
+      const mappings = await db.getPubblieMappings();
+      const automations = await db.getAutomations();
+      const mapping = mappings.find(m => m.channel_id === body.channelId || (m.ad_account_id === body.adAccountId && m.adset_id === body.adsetId));
+      const auto = automations.find(a => (body.automationId && a.id === body.automationId) || (mapping?.automation_id && a.id === mapping.automation_id) || (a.ad_account_id === body.adAccountId && a.adset_id === body.adsetId));
+
+      let platform = body.platform || auto?.platform || "Instagram";
+      if (platform.includes("Meta") || platform.includes("FB+IG")) {
+        platform = "Instagram";
+      }
+
+      let pageId = body.pageId || auto?.page_id || null;
+      let instagramAccountId = body.instagramAccountId || (platform === "Instagram" ? auto?.source_id : null);
+
+      if (!pageId && instagramAccountId) {
+        const page = metaService.pageForInstagramId(instagramAccountId);
+        if (page?.id) pageId = page.id;
+      }
+
+      if (!pageId || (platform === "Instagram" && !instagramAccountId)) {
+        try {
+          const sources = await metaService.listSourcesForAdAccount(body.adAccountId);
+          if (!pageId && sources.facebookPages?.length) {
+            pageId = sources.facebookPages[0].id;
+          }
+          if (!instagramAccountId && sources.instagramAccounts?.length) {
+            instagramAccountId = sources.instagramAccounts[0].id;
+            if (!pageId && sources.instagramAccounts[0].pageId) {
+              pageId = sources.instagramAccounts[0].pageId;
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Risoluzione dell'ID Post effettivo su Meta
+      let metaPostId = null;
+      const permalink = body.permalink || "";
+      const igShortcode = permalink.match(/\/(?:p|reel)\/([^\/\?]+)/)?.[1];
+      const postText = (body.postText || body.adName || "").trim();
+
+      // Cerca nei post pubblicati su Instagram
+      if (platform === "Instagram" && instagramAccountId) {
+        try {
+          const igMedia = await metaService.getInstagramMedia(instagramAccountId, pageId, 30);
+          const mediaList = igMedia.data || [];
+
+          let match = mediaList.find(m => {
+            if (permalink && m.permalink && m.permalink === permalink) return true;
+            if (igShortcode && m.permalink && m.permalink.includes(igShortcode)) return true;
+            return false;
+          });
+
+          if (!match && postText.length >= 10) {
+            const cleanTarget = postText.slice(0, 40).toLowerCase();
+            match = mediaList.find(m => {
+              const cap = (m.caption || "").toLowerCase();
+              return cap && (cap.includes(cleanTarget) || cleanTarget.includes(cap.slice(0, 40)));
+            });
+          }
+
+          if (match) {
+            metaPostId = match.id;
+          }
+        } catch (err) {
+          console.warn("[Timeline Sponsor] Errore verifica media Instagram:", err.message);
+        }
+      }
+
+      // Cerca nei post pubblicati su Facebook
+      if (platform === "Facebook" && pageId) {
+        try {
+          const fbPosts = await metaService.getFacebookPosts(pageId, 30);
+          const postList = fbPosts.data || [];
+
+          let match = postList.find(p => {
+            if (permalink && p.permalink_url && p.permalink_url === permalink) return true;
+            return false;
+          });
+
+          if (!match && postText.length >= 10) {
+            const cleanTarget = postText.slice(0, 40).toLowerCase();
+            match = postList.find(p => {
+              const msg = (p.message || "").toLowerCase();
+              return msg && (msg.includes(cleanTarget) || cleanTarget.includes(msg.slice(0, 40)));
+            });
+          }
+
+          if (match) {
+            metaPostId = match.id;
+          }
+        } catch (err) {
+          console.warn("[Timeline Sponsor] Errore verifica post Facebook:", err.message);
+        }
+      }
+
+      // Se non trovato tramite ricerca remota, controlla se il sourcePostId fornito è già un ID Meta valido
+      if (!metaPostId) {
+        const rawCandidate = String(body.sourcePostId || body.postId || "");
+        if (platform === "Facebook" && rawCandidate.includes("_")) {
+          metaPostId = rawCandidate;
+        } else if (platform === "Instagram" && /^\d{16,22}$/.test(rawCandidate)) {
+          metaPostId = rawCandidate;
+        }
+      }
+
+      // Se il post non risulta ancora pubblicato online su Meta, blocca con un messaggio chiaro e costruttivo
+      if (!metaPostId) {
+        return json(res, 400, {
+          error: `Impossibile sponsorizzare subito: il post non risulta ancora pubblicato online su ${platform} (è programmato per il futuro o in bozza). Meta Ads consente di sponsorizzare esclusivamente post già presenti e pubblicati sulla pagina o profilo. Assicurati che sia contrassegnato come "Incluso nel Flow" (⚡): non appena l'orario di pubblicazione scatterà e il post sarà online, il sistema automatico (cronjob) lo rileverà e creerà l'inserzione Meta Ads per te.`
+        }, req);
+      }
+
+      const adName = body.adName || `ADV - ${platform} - ${String(metaPostId).slice(-6)}`;
       const creativeParams = {
         name: adName,
         status: "ACTIVE"
       };
 
-      if (body.platform === "Facebook") {
-        creativeParams.object_story_id = body.sourcePostId || body.postId;
+      if (platform === "Facebook") {
+        creativeParams.object_story_id = metaPostId.includes("_") ? metaPostId : `${pageId}_${metaPostId}`;
       } else {
-        const page = metaService.pageForInstagramId(body.instagramAccountId);
-        creativeParams.object_id = page?.id || body.pageId;
-        creativeParams.instagram_user_id = body.instagramAccountId;
-        creativeParams.source_instagram_media_id = body.sourcePostId || body.postId;
+        const page = metaService.pageForInstagramId(instagramAccountId);
+        creativeParams.object_id = page?.id || pageId;
+        creativeParams.instagram_user_id = instagramAccountId;
+        creativeParams.source_instagram_media_id = metaPostId;
       }
 
       const creative = await metaService.graphPost(`/${body.adAccountId}/adcreatives`, creativeParams);
@@ -1209,10 +1323,10 @@ async function handleApi(req, res, url) {
       }
 
       await db.recordProcessedPost({
-        automation_id: body.automationId || null,
-        platform: body.platform || "Instagram",
-        source_id: body.platform === "Facebook" ? body.pageId : body.instagramAccountId,
-        post_id: body.postId,
+        automation_id: body.automationId || auto?.id || null,
+        platform,
+        source_id: platform === "Facebook" ? pageId : instagramAccountId,
+        post_id: metaPostId,
         post_permalink: body.permalink || "",
         post_message: adName,
         ad_id: ad.id,
@@ -1228,7 +1342,7 @@ async function handleApi(req, res, url) {
         notes: "Sponsorizzato manualmente dalla Timeline"
       });
 
-      return json(res, 200, { ok: true, adId: ad.id, creativeId: creative.id });
+      return json(res, 200, { ok: true, adId: ad.id, creativeId: creative.id }, req);
     }
 
     return json(res, 404, { error: "Endpoint non trovato" });

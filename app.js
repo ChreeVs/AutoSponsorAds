@@ -2619,8 +2619,13 @@ function buildTimelineCard(item) {
     const sponsorNowBtn = document.createElement("button");
     sponsorNowBtn.type = "button";
     sponsorNowBtn.className = "btn btn-secondary btn-xs";
-    sponsorNowBtn.innerHTML = `⚡ Ora`;
-    sponsorNowBtn.title = "Crea subito l'inserzione su Meta Ads per questo post";
+    if (item.isFuture) {
+      sponsorNowBtn.innerHTML = `⚡ Info`;
+      sponsorNowBtn.title = "Post programmato per il futuro: clicca per info sulla sponsorizzazione";
+    } else {
+      sponsorNowBtn.innerHTML = `⚡ Sponsorizza Ora`;
+      sponsorNowBtn.title = "Crea subito l'inserzione su Meta Ads per questo post già pubblicato";
+    }
     sponsorNowBtn.addEventListener("click", () => sponsorTimelinePostNow(item));
     actions.appendChild(sponsorNowBtn);
   }
@@ -2738,7 +2743,27 @@ async function sponsorTimelinePostNow(item) {
     return;
   }
 
-  const confirmMsg = `Vuoi creare subito un'inserzione Meta per questo post?\n\n` +
+  // Intercettazione post programmati per il futuro (non ancora pubblicati online su Meta)
+  if (item.isFuture || (item.pubblieStatus && item.pubblieStatus !== "PUBLISHED")) {
+    const dateFormatted = new Date(item.effectiveDate).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" });
+    const isAlreadyIncluded = item.flowStatus === "INCLUDED";
+    const msg = `⚠️ Questo post è PROGRAMMATO (data prevista: ${dateFormatted}) e non è ancora stato pubblicato su Facebook/Instagram.\n\n` +
+      `Meta Ads consente di creare inserzioni sponsorizzate SOLO per post già effettivamente pubblicati e online.\n\n` +
+      (isAlreadyIncluded
+        ? `✓ Il post è già contrassegnato come "INCLUSO NEL FLOW" (⚡).\nNon appena l'orario di pubblicazione scatterà e il post sarà online, il sistema automatico (cronjob) lo rileverà e creerà l'inserzione Meta Ads per te.`
+        : `Vuoi contrassegnarlo ora come "INCLUSO NEL FLOW" (⚡)?\nIn questo modo, non appena l'orario scatterà e Pubblie pubblicherà il post, il sistema automatico creerà l'inserzione Meta Ads.`);
+
+    if (!isAlreadyIncluded) {
+      if (confirm(msg)) {
+        togglePostFlow(item.rawId, true);
+      }
+    } else {
+      alert(msg);
+    }
+    return;
+  }
+
+  const confirmMsg = `Vuoi creare subito un'inserzione Meta per questo post già pubblicato?\n\n` +
     `• Account: ${item.mapping.ad_account_name || item.mapping.ad_account_id}\n` +
     `• Campagna: ${item.mapping.campaign_name || item.mapping.campaign_id}\n` +
     `• Gruppo (AdSet): ${item.mapping.adset_name || item.mapping.adset_id}\n` +
@@ -2747,17 +2772,21 @@ async function sponsorTimelinePostNow(item) {
   if (!confirm(confirmMsg)) return;
 
   try {
-    showBanner("Creazione inserzione su Meta in corso...", "info");
+    showBanner("Verifica post su Meta e creazione inserzione in corso...", "info");
     const payload = {
       postId: item.rawId,
       sourcePostId: item.rawId,
       platform: item.platform,
+      permalink: item.link || "",
+      postText: item.text || "",
+      channelId: item.channelIds?.[0] || "",
       adAccountId: item.mapping.ad_account_id,
+      campaignId: item.mapping.campaign_id,
       adsetId: item.mapping.adset_id,
       ruleId: item.mapping.rule_id || null,
+      automationId: item.mapping.automation_id || null,
       adName: `ADV - ${item.platform} - ${item.text.slice(0, 30).trim() || item.rawId.slice(-6)}`,
-      adStatus: item.mapping.ad_status || "PAUSED",
-      permalink: item.link || ""
+      adStatus: item.mapping.ad_status || "PAUSED"
     };
 
     const res = await api("/api/timeline/sponsor-now", {

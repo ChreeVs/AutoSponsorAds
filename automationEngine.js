@@ -274,7 +274,8 @@ class AutomationEngine {
           };
 
           if (automation.platform === "Facebook") {
-            creativeParams.object_story_id = post.id;
+            const fbPostId = String(post.id);
+            creativeParams.object_story_id = fbPostId.includes("_") ? fbPostId : `${automation.source_id}_${fbPostId}`;
           } else {
             const pageId = automation.page_id || this.meta.pageForInstagramId(automation.source_id)?.id;
             creativeParams.object_id = pageId;
