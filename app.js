@@ -2434,7 +2434,7 @@ function createDateGroupElement(info, groupItems) {
 function buildTimelineCard(item) {
   const cardWrapper = document.createElement("div");
   cardWrapper.className = `timeline-card-wrapper ${item.flowStatus.toLowerCase()}`;
-  cardWrapper.dataset.postId = item.rawId;
+  cardWrapper.dataset.postId = item.id || item.rawId;
 
   const card = document.createElement("div");
   card.className = `timeline-card flow-${item.flowStatus.toLowerCase()}`;
@@ -2599,7 +2599,7 @@ function buildTimelineCard(item) {
 
     flowToggleBtn.addEventListener("click", () => {
       const willBeIncluded = !flowToggleBtn.classList.contains("is-included");
-      togglePostFlow(item.rawId, willBeIncluded);
+      togglePostFlow(item.id || item.rawId, willBeIncluded);
     });
 
     footer.appendChild(flowToggleBtn);
@@ -2649,7 +2649,7 @@ function buildTimelineCard(item) {
 
 async function togglePostFlow(postId, included) {
   const newStatus = included ? "INCLUDED" : "EXCLUDED";
-  const item = state.timeline.items.find(i => i.rawId === postId);
+  const item = state.timeline.items.find(i => i.id === postId || i.rawId === postId);
   if (item) {
     item.flowStatus = newStatus;
   }
@@ -2689,7 +2689,7 @@ async function togglePostFlow(postId, included) {
         status: newStatus,
         source: item?.source || "pubblie",
         projectId: item?.projectId || "",
-        channelId: item?.channelIds?.[0] || "",
+        channelId: item?.channelId || item?.channelIds?.[0] || "",
         postText: item?.text || "",
         postPermalink: item?.link || ""
       })
@@ -2711,7 +2711,7 @@ async function bulkToggleFlow(status) {
 
   const isIncluded = status === "INCLUDED";
   postIds.forEach(id => {
-    const item = state.timeline.items.find(i => i.rawId === id);
+    const item = state.timeline.items.find(i => i.id === id || i.rawId === id);
     if (item && item.flowStatus !== "SPONSORED") {
       item.flowStatus = status;
     }
@@ -2774,12 +2774,12 @@ async function sponsorTimelinePostNow(item) {
   try {
     showBanner("Verifica post su Meta e creazione inserzione in corso...", "info");
     const payload = {
-      postId: item.rawId,
+      postId: item.id || item.rawId,
       sourcePostId: item.rawId,
       platform: item.platform,
       permalink: item.link || "",
       postText: item.text || "",
-      channelId: item.channelIds?.[0] || "",
+      channelId: item.channelId || item.channelIds?.[0] || "",
       adAccountId: item.mapping.ad_account_id,
       campaignId: item.mapping.campaign_id,
       adsetId: item.mapping.adset_id,
