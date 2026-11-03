@@ -1425,21 +1425,27 @@ function renderLogsTables() {
   tbodyPosts.innerHTML = "";
 
   if (!state.processedPosts.length) {
-    tbodyPosts.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-dim); padding: 24px;">Nessun post sponsorizzato finora</td></tr>`;
+    tbodyPosts.innerHTML = `<tr><td colspan="6" style="text-align: center; color: var(--text-dim); padding: 24px;">Nessun post sponsorizzato finora</td></tr>`;
   } else {
     state.processedPosts.forEach(p => {
       const dateStr = new Date(p.created_at).toLocaleString("it-IT", { dateStyle: "short", timeStyle: "short" });
+      const adAcc = p.ad_account_name || p.ad_account_id || "Account Meta";
+      const source = p.source_name || p.channel_name || "";
       const tr = document.createElement("tr");
       tr.innerHTML = `
+        <td style="white-space: nowrap; font-size: 0.82rem; color: var(--text-dim);">${dateStr}</td>
+        <td>
+          <div style="font-weight: 600; font-size: 0.85rem; color: var(--text-main);">${escapeHtml(adAcc)}</div>
+          ${source ? `<div style="font-size: 0.74rem; color: var(--accent-emerald); font-weight: 500;">${escapeHtml(source)}</div>` : ""}
+        </td>
         <td><span class="auto-platform-tag ${p.platform === 'Facebook' ? 'facebook' : 'instagram'}">${p.platform}</span></td>
         <td>
-          <div style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+          <div style="max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${escapeHtml(p.ad_name || p.post_message || p.post_id)}">
             <strong>${escapeHtml(p.ad_name || p.post_message || p.post_id)}</strong>
           </div>
         </td>
         <td><code>${p.ad_id || '-'}</code></td>
         <td><span class="badge-tag ${p.status === 'SUCCESS' ? 'success' : 'error'}">${p.status}</span></td>
-        <td>${dateStr}</td>
       `;
       tbodyPosts.appendChild(tr);
     });

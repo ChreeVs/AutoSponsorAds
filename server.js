@@ -637,7 +637,31 @@ async function handleApi(req, res, url) {
     if (url.pathname === "/api/processed-posts" && req.method === "GET") {
       const limit = Number(url.searchParams.get("limit") || 50);
       const posts = await db.getProcessedPosts(limit);
-      return json(res, 200, { data: posts });
+      const mappings = await db.getPubblieMappings();
+      const automations = await db.getAutomations();
+
+      const enriched = posts.map(p => {
+        let adAccountName = p.ad_account_name || "";
+        let sourceName = p.source_name || "";
+
+        if (!adAccountName || !sourceName) {
+          const auto = automations.find(a => a.id === p.automation_id || a.source_id === p.source_id);
+          const map = mappings.find(m => m.channel_id === p.source_id || m.automation_id === p.automation_id || (p.ad_account_id && m.ad_account_id === p.ad_account_id));
+          if (!adAccountName) {
+            adAccountName = p.ad_account_id || map?.ad_account_name || auto?.ad_account_name || map?.ad_account_id || auto?.ad_account_id || "";
+          }
+          if (!sourceName) {
+            sourceName = map?.channel_name || auto?.source_name || map?.project_name || "";
+          }
+        }
+        return {
+          ...p,
+          ad_account_name: adAccountName,
+          source_name: sourceName
+        };
+      });
+
+      return json(res, 200, { data: enriched });
     }
 
     // -------------------------------------------------------------------------
@@ -701,6 +725,9 @@ async function handleApi(req, res, url) {
             automation_id: null,
             platform: post.platform,
             source_id: post.platform === "Facebook" ? post.pageId : post.instagramAccountId,
+            source_name: post.sourceName || "",
+            ad_account_id: body.adAccountId,
+            ad_account_name: body.adAccountName || body.adAccountId,
             post_id: post.sourcePostId,
             post_permalink: post.permalink || "",
             post_message: post.adName,
@@ -1351,6 +1378,9 @@ async function handleApi(req, res, url) {
         automation_id: body.automationId || auto?.id || null,
         platform,
         source_id: platform === "Facebook" ? pageId : instagramAccountId,
+        source_name: mapping?.channel_name || mapping?.project_name || auto?.source_name || "",
+        ad_account_id: body.adAccountId,
+        ad_account_name: mapping?.ad_account_name || auto?.ad_account_name || body.adAccountId,
         post_id: metaPostId,
         post_permalink: body.permalink || "",
         post_message: adName,

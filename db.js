@@ -125,6 +125,9 @@ async function setupPostgresSchema() {
       automation_id VARCHAR(64) REFERENCES automations(id) ON DELETE CASCADE,
       platform VARCHAR(32) NOT NULL,
       source_id VARCHAR(128) NOT NULL,
+      source_name VARCHAR(255) DEFAULT '',
+      ad_account_id VARCHAR(128) DEFAULT '',
+      ad_account_name VARCHAR(255) DEFAULT '',
       post_id VARCHAR(128) NOT NULL UNIQUE,
       post_permalink TEXT DEFAULT '',
       post_message TEXT DEFAULT '',
@@ -136,6 +139,10 @@ async function setupPostgresSchema() {
       error_message TEXT DEFAULT '',
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE processed_posts ADD COLUMN IF NOT EXISTS source_name VARCHAR(255) DEFAULT '';
+    ALTER TABLE processed_posts ADD COLUMN IF NOT EXISTS ad_account_id VARCHAR(128) DEFAULT '';
+    ALTER TABLE processed_posts ADD COLUMN IF NOT EXISTS ad_account_name VARCHAR(255) DEFAULT '';
 
     CREATE TABLE IF NOT EXISTS execution_logs (
       id SERIAL PRIMARY KEY,
@@ -240,6 +247,9 @@ function setupSqliteSchema() {
       automation_id TEXT,
       platform TEXT NOT NULL,
       source_id TEXT NOT NULL,
+      source_name TEXT DEFAULT '',
+      ad_account_id TEXT DEFAULT '',
+      ad_account_name TEXT DEFAULT '',
       post_id TEXT NOT NULL UNIQUE,
       post_permalink TEXT DEFAULT '',
       post_message TEXT DEFAULT '',
@@ -319,6 +329,9 @@ function setupSqliteSchema() {
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN cta_type TEXT DEFAULT 'LEARN_MORE';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE pubblie_mappings ADD COLUMN cta_link TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE pubblie_mappings ADD COLUMN cta_type TEXT DEFAULT 'LEARN_MORE';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE processed_posts ADD COLUMN source_name TEXT DEFAULT '';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE processed_posts ADD COLUMN ad_account_id TEXT DEFAULT '';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE processed_posts ADD COLUMN ad_account_name TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE timeline_decisions ADD COLUMN post_text TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE timeline_decisions ADD COLUMN post_permalink TEXT DEFAULT '';"); } catch {}
 }
@@ -558,12 +571,13 @@ async function recordProcessedPost(data) {
   if (dbType === "postgres") {
     await pgPool.query(`
       INSERT INTO processed_posts (
-        automation_id, platform, source_id, post_id, post_permalink,
-        post_message, ad_id, creative_id, ad_name, rule_applied, status, error_message, created_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        automation_id, platform, source_id, source_name, ad_account_id, ad_account_name,
+        post_id, post_permalink, post_message, ad_id, creative_id, ad_name, rule_applied, status, error_message, created_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
       ON CONFLICT (post_id) DO NOTHING
     `, [
-      data.automation_id, data.platform, data.source_id, data.post_id,
+      data.automation_id, data.platform, data.source_id, data.source_name || "",
+      data.ad_account_id || "", data.ad_account_name || "", data.post_id,
       data.post_permalink || "", data.post_message || "", data.ad_id || "",
       data.creative_id || "", data.ad_name || "", Boolean(data.rule_applied),
       data.status || "SUCCESS", data.error_message || "", now
@@ -573,13 +587,14 @@ async function recordProcessedPost(data) {
   if (dbType === "sqlite") {
     const stmt = sqliteDb.prepare(`
       INSERT INTO processed_posts (
-        automation_id, platform, source_id, post_id, post_permalink,
-        post_message, ad_id, creative_id, ad_name, rule_applied, status, error_message, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        automation_id, platform, source_id, source_name, ad_account_id, ad_account_name,
+        post_id, post_permalink, post_message, ad_id, creative_id, ad_name, rule_applied, status, error_message, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (post_id) DO NOTHING
     `);
     stmt.run(
-      data.automation_id, data.platform, data.source_id, data.post_id,
+      data.automation_id, data.platform, data.source_id, data.source_name || "",
+      data.ad_account_id || "", data.ad_account_name || "", data.post_id,
       data.post_permalink || "", data.post_message || "", data.ad_id || "",
       data.creative_id || "", data.ad_name || "", data.rule_applied ? 1 : 0,
       data.status || "SUCCESS", data.error_message || "", now
