@@ -173,9 +173,16 @@ async function setupPostgresSchema() {
       ad_name_pattern VARCHAR(255) DEFAULT 'ADV - {platform} - {post}',
       ad_status VARCHAR(32) DEFAULT 'PAUSED',
       auto_sponsor_on_publish BOOLEAN DEFAULT true,
+      cta_link TEXT DEFAULT '',
+      cta_type VARCHAR(64) DEFAULT 'LEARN_MORE',
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+
+    ALTER TABLE pubblie_mappings ADD COLUMN IF NOT EXISTS cta_link TEXT DEFAULT '';
+    ALTER TABLE pubblie_mappings ADD COLUMN IF NOT EXISTS cta_type VARCHAR(64) DEFAULT 'LEARN_MORE';
+    ALTER TABLE automations ADD COLUMN IF NOT EXISTS cta_link TEXT DEFAULT '';
+    ALTER TABLE automations ADD COLUMN IF NOT EXISTS cta_type VARCHAR(64) DEFAULT 'LEARN_MORE';
 
     CREATE TABLE IF NOT EXISTS timeline_decisions (
       post_id VARCHAR(128) PRIMARY KEY,
@@ -282,6 +289,8 @@ function setupSqliteSchema() {
       ad_name_pattern TEXT DEFAULT 'ADV - {platform} - {post}',
       ad_status TEXT DEFAULT 'PAUSED',
       auto_sponsor_on_publish INTEGER DEFAULT 1,
+      cta_link TEXT DEFAULT '',
+      cta_type TEXT DEFAULT 'LEARN_MORE',
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -306,6 +315,10 @@ function setupSqliteSchema() {
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN adset_clone_source_id TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN adset_clone_name_pattern TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN exclude_keywords TEXT DEFAULT '';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN cta_link TEXT DEFAULT '';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE automations ADD COLUMN cta_type TEXT DEFAULT 'LEARN_MORE';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE pubblie_mappings ADD COLUMN cta_link TEXT DEFAULT '';"); } catch {}
+  try { sqliteDb.exec("ALTER TABLE pubblie_mappings ADD COLUMN cta_type TEXT DEFAULT 'LEARN_MORE';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE timeline_decisions ADD COLUMN post_text TEXT DEFAULT '';"); } catch {}
   try { sqliteDb.exec("ALTER TABLE timeline_decisions ADD COLUMN post_permalink TEXT DEFAULT '';"); } catch {}
 }
@@ -351,6 +364,8 @@ async function saveAutomation(item) {
     adset_clone_source_id: item.adset_clone_source_id || "",
     adset_clone_name_pattern: item.adset_clone_name_pattern || "",
     exclude_keywords: item.exclude_keywords || "",
+    cta_link: item.cta_link || "",
+    cta_type: item.cta_type || "LEARN_MORE",
     created_at: item.created_at || now,
     last_run_status: item.last_run_status || "IDLE",
     last_run_message: item.last_run_message || ""
@@ -363,8 +378,8 @@ async function saveAutomation(item) {
         ad_account_id, campaign_id, campaign_name, adset_id, adset_name,
         rule_id, rule_name, ad_name_pattern, ad_status, check_interval_hours,
         filter_keywords, exclude_keywords, start_time, adset_full_strategy, adset_clone_source_id, adset_clone_name_pattern,
-        created_at, last_checked_at, last_run_status, last_run_message
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
+        cta_link, cta_type, created_at, last_checked_at, last_run_status, last_run_message
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29)
       ON CONFLICT (id) DO UPDATE SET
         name = EXCLUDED.name,
         enabled = EXCLUDED.enabled,
@@ -387,7 +402,9 @@ async function saveAutomation(item) {
         start_time = EXCLUDED.start_time,
         adset_full_strategy = EXCLUDED.adset_full_strategy,
         adset_clone_source_id = EXCLUDED.adset_clone_source_id,
-        adset_clone_name_pattern = EXCLUDED.adset_clone_name_pattern
+        adset_clone_name_pattern = EXCLUDED.adset_clone_name_pattern,
+        cta_link = EXCLUDED.cta_link,
+        cta_type = EXCLUDED.cta_type
     `, [
       normalized.id, normalized.name, normalized.enabled, normalized.platform, normalized.source_id,
       normalized.source_name || "", normalized.page_id || "", normalized.ad_account_id,
@@ -396,6 +413,7 @@ async function saveAutomation(item) {
       normalized.ad_status || "PAUSED", normalized.check_interval_hours || 12, normalized.filter_keywords || "",
       normalized.exclude_keywords,
       normalized.start_time, normalized.adset_full_strategy, normalized.adset_clone_source_id, normalized.adset_clone_name_pattern,
+      normalized.cta_link, normalized.cta_type,
       normalized.created_at, normalized.last_checked_at || null,
       normalized.last_run_status, normalized.last_run_message
     ]);
@@ -409,8 +427,8 @@ async function saveAutomation(item) {
         ad_account_id, campaign_id, campaign_name, adset_id, adset_name,
         rule_id, rule_name, ad_name_pattern, ad_status, check_interval_hours,
         filter_keywords, exclude_keywords, start_time, adset_full_strategy, adset_clone_source_id, adset_clone_name_pattern,
-        created_at, last_checked_at, last_run_status, last_run_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cta_link, cta_type, created_at, last_checked_at, last_run_status, last_run_message
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (id) DO UPDATE SET
         name = excluded.name,
         enabled = excluded.enabled,
@@ -433,7 +451,9 @@ async function saveAutomation(item) {
         start_time = excluded.start_time,
         adset_full_strategy = excluded.adset_full_strategy,
         adset_clone_source_id = excluded.adset_clone_source_id,
-        adset_clone_name_pattern = excluded.adset_clone_name_pattern
+        adset_clone_name_pattern = excluded.adset_clone_name_pattern,
+        cta_link = excluded.cta_link,
+        cta_type = excluded.cta_type
     `);
 
     stmt.run(
@@ -444,6 +464,7 @@ async function saveAutomation(item) {
       normalized.ad_status || "PAUSED", normalized.check_interval_hours || 12, normalized.filter_keywords || "",
       normalized.exclude_keywords,
       normalized.start_time, normalized.adset_full_strategy, normalized.adset_clone_source_id, normalized.adset_clone_name_pattern,
+      normalized.cta_link, normalized.cta_type,
       normalized.created_at, normalized.last_checked_at || null,
       normalized.last_run_status, normalized.last_run_message
     );
@@ -767,6 +788,8 @@ async function savePubblieMapping(item) {
     ad_name_pattern: item.ad_name_pattern || "ADV - {platform} - {post}",
     ad_status: item.ad_status || "PAUSED",
     auto_sponsor_on_publish: item.auto_sponsor_on_publish ?? true,
+    cta_link: item.cta_link || "",
+    cta_type: item.cta_type || "LEARN_MORE",
     created_at: item.created_at || now,
     updated_at: now
   };
@@ -777,8 +800,8 @@ async function savePubblieMapping(item) {
         id, project_id, project_name, channel_id, channel_name, channel_provider,
         ad_account_id, ad_account_name, campaign_id, campaign_name, adset_id, adset_name,
         rule_id, rule_name, automation_id, ad_name_pattern, ad_status, auto_sponsor_on_publish,
-        created_at, updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+        cta_link, cta_type, created_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
       ON CONFLICT (id) DO UPDATE SET
         project_name = EXCLUDED.project_name,
         channel_name = EXCLUDED.channel_name,
@@ -795,12 +818,14 @@ async function savePubblieMapping(item) {
         ad_name_pattern = EXCLUDED.ad_name_pattern,
         ad_status = EXCLUDED.ad_status,
         auto_sponsor_on_publish = EXCLUDED.auto_sponsor_on_publish,
+        cta_link = EXCLUDED.cta_link,
+        cta_type = EXCLUDED.cta_type,
         updated_at = EXCLUDED.updated_at
     `, [
       record.id, record.project_id, record.project_name, record.channel_id, record.channel_name, record.channel_provider,
       record.ad_account_id, record.ad_account_name, record.campaign_id, record.campaign_name, record.adset_id, record.adset_name,
       record.rule_id, record.rule_name, record.automation_id, record.ad_name_pattern, record.ad_status, record.auto_sponsor_on_publish,
-      record.created_at, record.updated_at
+      record.cta_link, record.cta_type, record.created_at, record.updated_at
     ]);
     return record;
   }
@@ -811,8 +836,8 @@ async function savePubblieMapping(item) {
         id, project_id, project_name, channel_id, channel_name, channel_provider,
         ad_account_id, ad_account_name, campaign_id, campaign_name, adset_id, adset_name,
         rule_id, rule_name, automation_id, ad_name_pattern, ad_status, auto_sponsor_on_publish,
-        created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        cta_link, cta_type, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT (id) DO UPDATE SET
         project_name = excluded.project_name,
         channel_name = excluded.channel_name,
@@ -829,13 +854,15 @@ async function savePubblieMapping(item) {
         ad_name_pattern = excluded.ad_name_pattern,
         ad_status = excluded.ad_status,
         auto_sponsor_on_publish = excluded.auto_sponsor_on_publish,
+        cta_link = excluded.cta_link,
+        cta_type = excluded.cta_type,
         updated_at = excluded.updated_at
     `);
     stmt.run(
       record.id, record.project_id, record.project_name, record.channel_id, record.channel_name, record.channel_provider,
       record.ad_account_id, record.ad_account_name, record.campaign_id, record.campaign_name, record.adset_id, record.adset_name,
       record.rule_id, record.rule_name, record.automation_id, record.ad_name_pattern, record.ad_status, record.auto_sponsor_on_publish ? 1 : 0,
-      record.created_at, record.updated_at
+      record.cta_link, record.cta_type, record.created_at, record.updated_at
     );
     return record;
   }

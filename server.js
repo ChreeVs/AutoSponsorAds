@@ -682,6 +682,13 @@ async function handleApi(req, res, url) {
             creativeParams.source_instagram_media_id = post.sourcePostId;
           }
 
+          if (post.ctaLink) {
+            creativeParams.call_to_action = {
+              type: post.ctaType || "LEARN_MORE",
+              value: { link: post.ctaLink }
+            };
+          }
+
           const creative = await metaService.graphPost(`/${body.adAccountId}/adcreatives`, creativeParams);
           const ad = await metaService.graphPost(`/${body.adAccountId}/ads`, {
             name: post.adName,
@@ -714,12 +721,16 @@ async function handleApi(req, res, url) {
             ruleId: post.ruleId || null
           });
         } catch (error) {
+          let errText = error.message || "Errore sconosciuto";
+          if (errText.includes("1443128") || errText.toLowerCase().includes("link cta") || errText.toLowerCase().includes("cta link")) {
+            errText = `Errore Meta (#1443128): La campagna selezionata richiede un link di destinazione obbligatorio (CTA). Configura l'URL di destinazione o usa una campagna con obiettivo Interazione con i post.`;
+          }
           results.push({
             ok: false,
             localId: post.id,
             adName: post.adName,
             platform: post.platform,
-            error: error.message,
+            error: errText,
             meta: error.meta || null
           });
         }
@@ -1285,6 +1296,9 @@ async function handleApi(req, res, url) {
         }, req);
       }
 
+      const ctaLink = body.ctaLink || mapping?.cta_link || "";
+      const ctaType = body.ctaType || mapping?.cta_type || "LEARN_MORE";
+
       const adName = body.adName || `ADV - ${platform} - ${String(metaPostId).slice(-6)}`;
       const creativeParams = {
         name: adName,
@@ -1298,9 +1312,26 @@ async function handleApi(req, res, url) {
         creativeParams.object_id = page?.id || pageId;
         creativeParams.instagram_user_id = instagramAccountId;
         creativeParams.source_instagram_media_id = metaPostId;
+        if (ctaLink) {
+          creativeParams.call_to_action = {
+            type: ctaType,
+            value: { link: ctaLink }
+          };
+        }
       }
 
-      const creative = await metaService.graphPost(`/${body.adAccountId}/adcreatives`, creativeParams);
+      let creative;
+      try {
+        creative = await metaService.graphPost(`/${body.adAccountId}/adcreatives`, creativeParams);
+      } catch (cErr) {
+        let msg = cErr.message || "";
+        if (msg.includes("1443128") || msg.toLowerCase().includes("link cta") || msg.toLowerCase().includes("cta link")) {
+          return json(res, 400, {
+            error: `Errore Meta (#1443128): La campagna selezionata richiede obbligatoriamente un link di destinazione (CTA). Configura l'URL di destinazione nella mappatura del canale su Pubblie o usa un gruppo inserzioni con obiettivo "Interazione con i post".`
+          }, req);
+        }
+        throw cErr;
+      }
       const ad = await metaService.graphPost(`/${body.adAccountId}/ads`, {
         name: adName,
         adset_id: body.adsetId,

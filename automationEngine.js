@@ -283,6 +283,26 @@ class AutomationEngine {
             creativeParams.source_instagram_media_id = post.id;
           }
 
+          let ctaLink = automation.cta_link || "";
+          let ctaType = automation.cta_type || "LEARN_MORE";
+          if (!ctaLink) {
+            try {
+              const mappings = await db.getPubblieMappings();
+              const m = mappings.find(map => map.channel_id === automation.source_id || map.automation_id === automation.id);
+              if (m?.cta_link) {
+                ctaLink = m.cta_link;
+                ctaType = m.cta_type || ctaType;
+              }
+            } catch {}
+          }
+
+          if (ctaLink) {
+            creativeParams.call_to_action = {
+              type: ctaType,
+              value: { link: ctaLink }
+            };
+          }
+
           const creative = await this.meta.graphPost(`/${automation.ad_account_id}/adcreatives`, creativeParams);
 
           // Create Ad in currentAdsetId

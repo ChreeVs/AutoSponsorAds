@@ -756,6 +756,32 @@
             </div>
           </div>
 
+          <!-- Dynamic CTA & URL Container (visible only when Campaign requires CTA) -->
+          <div id="autoCtaContainer" style="display: none; margin-top: 6px; margin-bottom: 16px; padding: 12px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-md);">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: var(--accent-blue); margin-bottom: 10px;">
+              <span>🎯</span> Questa campagna richiede un link di destinazione obbligatorio (CTA)
+            </div>
+            <div class="form-row" style="margin-bottom: 0;">
+              <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                <label for="autoCtaLink">URL di destinazione <span class="required">*</span></label>
+                <input id="autoCtaLink" type="url" placeholder="https://www.tuosito.it/promozione" autocomplete="off">
+                <small class="help-text">Sito web o landing page dove atterreranno gli utenti dopo il click.</small>
+              </div>
+              <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                <label for="autoCtaType">Pulsante CTA</label>
+                <select id="autoCtaType">
+                  <option value="LEARN_MORE" selected>Scopri di più</option>
+                  <option value="SHOP_NOW">Acquista ora</option>
+                  <option value="SIGN_UP">Iscriviti</option>
+                  <option value="CONTACT_US">Contattaci</option>
+                  <option value="BOOK_NOW">Prenota subito</option>
+                  <option value="APPLY_NOW">Richiedi ora</option>
+                  <option value="DOWNLOAD">Scarica</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
           <!-- 4. Start Time Protection & AdSet 50-limit Strategy -->
           <div class="form-row">
             <div class="form-group">
@@ -1095,6 +1121,32 @@
               </div>
             </div>
 
+            <!-- Dynamic CTA & URL Container (visible only when Campaign requires CTA) -->
+            <div id="mappingCtaContainer" style="display: none; margin-top: 6px; margin-bottom: 16px; padding: 12px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-md);">
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: var(--accent-blue); margin-bottom: 10px;">
+                <span>🎯</span> Questa campagna richiede un link di destinazione obbligatorio (CTA)
+              </div>
+              <div class="form-row" style="margin-bottom: 0;">
+                <div class="form-group" style="flex: 2; margin-bottom: 0;">
+                  <label for="mappingCtaLink">URL di destinazione <span class="required">*</span></label>
+                  <input id="mappingCtaLink" type="url" placeholder="https://www.tuosito.it/promozione" autocomplete="off">
+                  <small class="help-text">Sito web o landing page dove atterreranno gli utenti dopo il click.</small>
+                </div>
+                <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                  <label for="mappingCtaType">Pulsante CTA</label>
+                  <select id="mappingCtaType">
+                    <option value="LEARN_MORE" selected>Scopri di più</option>
+                    <option value="SHOP_NOW">Acquista ora</option>
+                    <option value="SIGN_UP">Iscriviti</option>
+                    <option value="CONTACT_US">Contattaci</option>
+                    <option value="BOOK_NOW">Prenota subito</option>
+                    <option value="APPLY_NOW">Richiedi ora</option>
+                    <option value="DOWNLOAD">Scarica</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
             <div class="form-row">
               <div class="form-group">
                 <label for="mappingNamingPattern">Pattern Nome Inserzione</label>
@@ -1139,6 +1191,6 @@
       </form>
     </dialog>
 
-    <script src="app.js?v=2.6"></script>
+    <script src="app.js?v=2.7"></script>
   </body>
 </html>

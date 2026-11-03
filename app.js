@@ -78,6 +78,8 @@ const state = {
     archivedProjectIds: new Set(),
     channels: [],
     mappings: [],
+    mappingCampaigns: [],
+    mappingAdsets: [],
     filters: {
       projectId: "",
       platform: "meta",
@@ -86,10 +88,73 @@ const state = {
       query: ""
     },
     loading: false
-  }
+  },
+  autoModalCampaigns: [],
+  autoModalAdsets: []
 };
 
 let visiblePostIds = [];
+
+// -----------------------------------------------------------------------------
+// Meta CTA & Destination Requirement Helpers
+// -----------------------------------------------------------------------------
+function isCtaRequired(campaign, adset) {
+  if (!campaign && !adset) return false;
+  const objective = (campaign?.objective || "").toUpperCase();
+  const optimizationGoal = (adset?.optimization_goal || "").toUpperCase();
+
+  // Campaign objectives that strictly require a destination link / CTA button
+  const ctaObjectives = [
+    "OUTCOME_TRAFFIC", "TRAFFIC",
+    "OUTCOME_LEADS", "LEAD_GENERATION",
+    "OUTCOME_SALES", "CONVERSIONS", "PRODUCT_CATALOG_SALES",
+    "OUTCOME_APP_PROMOTION", "APP_INSTALLS",
+    "LINK_CLICKS", "MESSAGES"
+  ];
+  if (ctaObjectives.includes(objective)) return true;
+
+  // AdSet optimization goals that strictly require a destination link / CTA button
+  const ctaGoals = [
+    "LINK_CLICKS",
+    "LANDING_PAGE_VIEWS",
+    "OFFSITE_CONVERSIONS",
+    "LEAD_GENERATION",
+    "QUALITY_CALL",
+    "VALUE",
+    "CONVERSATIONS"
+  ];
+  if (ctaGoals.includes(optimizationGoal)) return true;
+
+  return false;
+}
+
+function updateMappingCtaVisibility() {
+  if (!dom.mappingCtaContainer) return;
+  const campId = dom.mappingCampaignSelect?.value;
+  const adsetId = dom.mappingAdsetSelect?.value;
+  const camp = (state.timeline.mappingCampaigns || []).find(c => c.id === campId);
+  const adset = (state.timeline.mappingAdsets || []).find(a => a.id === adsetId);
+  const required = isCtaRequired(camp, adset);
+
+  dom.mappingCtaContainer.style.display = required ? "block" : "none";
+  if (dom.mappingCtaLink) {
+    dom.mappingCtaLink.required = required;
+  }
+}
+
+function updateAutoModalCtaVisibility() {
+  if (!dom.autoCtaContainer) return;
+  const campId = dom.autoCampaignSelect?.value;
+  const adsetId = dom.autoAdsetSelect?.value;
+  const camp = (state.autoModalCampaigns || []).find(c => c.id === campId);
+  const adset = (state.autoModalAdsets || []).find(a => a.id === adsetId);
+  const required = isCtaRequired(camp, adset);
+
+  dom.autoCtaContainer.style.display = required ? "block" : "none";
+  if (dom.autoCtaLink) {
+    dom.autoCtaLink.required = required;
+  }
+}
 
 // -----------------------------------------------------------------------------
 // API Helper
@@ -190,6 +255,9 @@ const dom = {
   autoAdAccountSelect: document.getElementById("autoAdAccountSelect"),
   autoCampaignSelect: document.getElementById("autoCampaignSelect"),
   autoAdsetSelect: document.getElementById("autoAdsetSelect"),
+  autoCtaContainer: document.getElementById("autoCtaContainer"),
+  autoCtaLink: document.getElementById("autoCtaLink"),
+  autoCtaType: document.getElementById("autoCtaType"),
   autoRuleSelect: document.getElementById("autoRuleSelect"),
   autoIntervalInput: document.getElementById("autoIntervalInput"),
   autoIntervalSelect: document.getElementById("autoIntervalSelect"),
@@ -361,6 +429,9 @@ const dom = {
   mappingAdAccountSelect: document.getElementById("mappingAdAccountSelect"),
   mappingCampaignSelect: document.getElementById("mappingCampaignSelect"),
   mappingAdsetSelect: document.getElementById("mappingAdsetSelect"),
+  mappingCtaContainer: document.getElementById("mappingCtaContainer"),
+  mappingCtaLink: document.getElementById("mappingCtaLink"),
+  mappingCtaType: document.getElementById("mappingCtaType"),
   mappingRuleSelect: document.getElementById("mappingRuleSelect"),
   mappingNamingPattern: document.getElementById("mappingNamingPattern"),
   mappingAdStatusSelect: document.getElementById("mappingAdStatusSelect"),
@@ -914,6 +985,11 @@ function setupModal() {
     const accountId = dom.autoAdAccountSelect.value;
     const campaignId = dom.autoCampaignSelect.value;
     await populateModalAdsets(accountId, campaignId);
+    updateAutoModalCtaVisibility();
+  });
+
+  dom.autoAdsetSelect.addEventListener("change", () => {
+    updateAutoModalCtaVisibility();
   });
 
   dom.autoNamingPattern.addEventListener("input", () => {
@@ -989,6 +1065,8 @@ async function openNewModal() {
 
   if (dom.sourcePreviewContainer) dom.sourcePreviewContainer.hidden = true;
   if (dom.duplicateFromModalBtn) dom.duplicateFromModalBtn.style.display = "none";
+  if (dom.autoCtaLink) dom.autoCtaLink.value = "";
+  if (dom.autoCtaType) dom.autoCtaType.value = "LEARN_MORE";
 
   state.modalSelectedPlatform = "Facebook";
   dom.btnPlatformFB.classList.add("active");
@@ -1022,6 +1100,8 @@ async function openEditModal(id) {
   if (dom.autoAdsetCloneNameInput) {
     dom.autoAdsetCloneNameInput.value = item.adset_clone_name_pattern || "";
   }
+  if (dom.autoCtaLink) dom.autoCtaLink.value = item.cta_link || "";
+  if (dom.autoCtaType) dom.autoCtaType.value = item.cta_type || "LEARN_MORE";
 
   if (dom.autoStartTimeInput) {
     const rawStart = item.start_time || item.created_at || new Date().toISOString();
@@ -1122,6 +1202,7 @@ async function populateModalCampaigns(accountId, targetCampaignId = "", targetAd
   try {
     const payload = await api(`/api/meta/campaigns?accountId=${encodeURIComponent(accountId)}`);
     const campaigns = payload.data || [];
+    state.autoModalCampaigns = campaigns;
     select.innerHTML = "";
 
     if (!campaigns.length) {
@@ -1155,6 +1236,7 @@ async function populateModalAdsets(accountId, campaignId, targetAdsetId = "", ta
   try {
     const payload = await api(`/api/meta/adsets?accountId=${encodeURIComponent(accountId)}&campaignId=${encodeURIComponent(campaignId)}`);
     const adsets = payload.data || [];
+    state.autoModalAdsets = adsets;
     select.innerHTML = "";
     if (cloneSelect) cloneSelect.innerHTML = `<option value="">Usa lo stesso gruppo iniziale</option>`;
 
@@ -1198,6 +1280,8 @@ async function populateModalAdsets(accountId, campaignId, targetAdsetId = "", ta
       cloneOpt.selected = true;
       cloneSelect.appendChild(cloneOpt);
     }
+
+    updateAutoModalCtaVisibility();
   } catch (err) {
     select.innerHTML = `<option value="">Errore gruppi: ${err.message}</option>`;
     if (cloneSelect) cloneSelect.innerHTML = `<option value="">Errore gruppi: ${err.message}</option>`;
@@ -1230,6 +1314,17 @@ async function saveAutomationFromModal() {
   const adsetOption = dom.autoAdsetSelect.selectedOptions[0];
   const ruleOption = dom.autoRuleSelect.selectedOptions[0];
 
+  const ctaLink = dom.autoCtaLink ? dom.autoCtaLink.value.trim() : "";
+  const ctaType = dom.autoCtaType ? dom.autoCtaType.value : "LEARN_MORE";
+
+  const selectedCamp = (state.autoModalCampaigns || []).find(c => c.id === dom.autoCampaignSelect.value);
+  const selectedAdset = (state.autoModalAdsets || []).find(a => a.id === dom.autoAdsetSelect.value);
+  if (isCtaRequired(selectedCamp, selectedAdset) && !ctaLink) {
+    showBanner("Questa campagna richiede obbligatoriamente un URL di destinazione (CTA)", "danger");
+    dom.autoCtaLink?.focus();
+    return;
+  }
+
   const payload = {
     name: dom.autoNameInput.value.trim(),
     platform: state.modalSelectedPlatform,
@@ -1248,6 +1343,8 @@ async function saveAutomationFromModal() {
     ad_name_pattern: dom.autoNamingPattern.value || "ADV - {platform} - {post}",
     filter_keywords: dom.autoFilterKeywords.value.trim(),
     exclude_keywords: dom.autoExcludeKeywords ? dom.autoExcludeKeywords.value.trim() : "",
+    cta_link: ctaLink,
+    cta_type: ctaType,
     start_time: dom.autoStartTimeInput?.value ? new Date(dom.autoStartTimeInput.value).toISOString() : new Date().toISOString(),
     adset_full_strategy: dom.autoAdsetStrategySelect?.value || "ROTATE_OLDEST",
     adset_clone_source_id: (dom.autoAdsetStrategySelect?.value === "CREATE_NEW_ADSET") ? (dom.autoAdsetCloneSourceSelect?.value || "") : "",
@@ -2767,7 +2864,8 @@ async function sponsorTimelinePostNow(item) {
     `• Account: ${item.mapping.ad_account_name || item.mapping.ad_account_id}\n` +
     `• Campagna: ${item.mapping.campaign_name || item.mapping.campaign_id}\n` +
     `• Gruppo (AdSet): ${item.mapping.adset_name || item.mapping.adset_id}\n` +
-    `• Stato: ${item.mapping.ad_status || "PAUSED"}`;
+    `• Stato: ${item.mapping.ad_status || "PAUSED"}` +
+    (item.mapping.cta_link ? `\n• Link CTA (${item.mapping.cta_type || "LEARN_MORE"}): ${item.mapping.cta_link}` : "");
 
   if (!confirm(confirmMsg)) return;
 
@@ -2786,7 +2884,9 @@ async function sponsorTimelinePostNow(item) {
       ruleId: item.mapping.rule_id || null,
       automationId: item.mapping.automation_id || null,
       adName: `ADV - ${item.platform} - ${item.text.slice(0, 30).trim() || item.rawId.slice(-6)}`,
-      adStatus: item.mapping.ad_status || "PAUSED"
+      adStatus: item.mapping.ad_status || "PAUSED",
+      ctaLink: item.mapping.cta_link || "",
+      ctaType: item.mapping.cta_type || "LEARN_MORE"
     };
 
     const res = await api("/api/timeline/sponsor-now", {
@@ -2876,6 +2976,7 @@ async function loadPubblieMetaCampaigns(accountId, targetCampaignId = "", target
     ]);
 
     const campaigns = campRes.data || [];
+    state.timeline.mappingCampaigns = campaigns;
     campSelect.innerHTML = `<option value="">-- Seleziona Campagna Meta --</option>`;
     campaigns.forEach(c => {
       const opt = document.createElement("option");
@@ -2914,6 +3015,7 @@ async function loadPubblieMetaAdsets(accountId, campaignId, targetAdsetId = "") 
   try {
     const res = await api(`/api/meta/adsets?accountId=${encodeURIComponent(accountId)}&campaignId=${encodeURIComponent(campaignId)}`);
     const adsets = res.data || [];
+    state.timeline.mappingAdsets = adsets;
     adsetSelect.innerHTML = `<option value="">-- Seleziona Gruppo Inserzioni (AdSet) --</option>`;
     adsets.forEach(a => {
       const opt = document.createElement("option");
@@ -2922,6 +3024,7 @@ async function loadPubblieMetaAdsets(accountId, campaignId, targetAdsetId = "") 
       if (targetAdsetId && a.id === targetAdsetId) opt.selected = true;
       adsetSelect.appendChild(opt);
     });
+    updateMappingCtaVisibility();
   } catch (err) {
     adsetSelect.innerHTML = `<option value="">Errore gruppi: ${escapeHtml(err.message)}</option>`;
   }
@@ -3165,6 +3268,7 @@ function renderPubblieMappingsList() {
         <div style="font-size: 0.82rem; color: var(--text-muted); font-family: 'JetBrains Mono', monospace;">
           🎯 ${escapeHtml(m.ad_account_name || m.ad_account_id)} &gt; ${escapeHtml(m.campaign_name || m.campaign_id)} &gt; <strong>${escapeHtml(m.adset_name || m.adset_id)}</strong>
         </div>
+        ${m.cta_link ? `<div style="font-size: 0.78rem; color: var(--accent-blue); margin-top: 3px;">🔗 CTA (${escapeHtml(m.cta_type || "LEARN_MORE")}): <a href="${escapeHtml(m.cta_link)}" target="_blank" rel="noopener" style="color: var(--accent-blue); text-decoration: underline;">${escapeHtml(m.cta_link)}</a></div>` : ""}
       </div>
       <div>
         <button type="button" class="btn btn-ghost btn-sm delete-pub-map-btn" data-id="${escapeHtml(m.id)}" style="color: var(--accent-rose);" title="Elimina associazione">
@@ -3218,6 +3322,17 @@ async function handleSavePubblieMapping() {
     return;
   }
 
+  const ctaLink = dom.mappingCtaLink ? dom.mappingCtaLink.value.trim() : "";
+  const ctaType = dom.mappingCtaType ? dom.mappingCtaType.value : "LEARN_MORE";
+
+  const selectedCamp = (state.timeline.mappingCampaigns || []).find(c => c.id === campaignId);
+  const selectedAdset = (state.timeline.mappingAdsets || []).find(a => a.id === adsetId);
+  if (isCtaRequired(selectedCamp, selectedAdset) && !ctaLink) {
+    alert("Questa campagna o gruppo inserzioni richiede obbligatoriamente un URL di destinazione (CTA). Inserisci il link al tuo sito web.");
+    dom.mappingCtaLink?.focus();
+    return;
+  }
+
   const payload = {
     project_id: projectId,
     project_name: projectName,
@@ -3234,6 +3349,8 @@ async function handleSavePubblieMapping() {
     rule_name: ruleName,
     ad_name_pattern: dom.mappingNamingPattern?.value || "ADV - {platform} - {post}",
     ad_status: dom.mappingAdStatusSelect?.value || "PAUSED",
+    cta_link: ctaLink,
+    cta_type: ctaType,
     auto_sponsor_on_publish: dom.mappingAutoIncludeFlowCheckbox ? dom.mappingAutoIncludeFlowCheckbox.checked : true
   };
 
@@ -3411,6 +3528,8 @@ function setupPubblieModalListeners() {
     }
     if (dom.mappingNamingPattern) dom.mappingNamingPattern.value = auto.ad_name_pattern || "ADV - {platform} - {post}";
     if (dom.mappingAdStatusSelect) dom.mappingAdStatusSelect.value = auto.ad_status || "PAUSED";
+    if (dom.mappingCtaLink && auto.cta_link) dom.mappingCtaLink.value = auto.cta_link;
+    if (dom.mappingCtaType && auto.cta_type) dom.mappingCtaType.value = auto.cta_type;
 
     showBanner(`Parametri copiati dall'automazione "${auto.name}".`, "info");
   });
@@ -3421,10 +3540,15 @@ function setupPubblieModalListeners() {
     loadPubblieMetaCampaigns(accId);
   });
 
-  dom.mappingCampaignSelect?.addEventListener("change", (e) => {
+  dom.mappingCampaignSelect?.addEventListener("change", async (e) => {
     const accId = dom.mappingAdAccountSelect?.value;
     const campId = e.target.value;
-    loadPubblieMetaAdsets(accId, campId);
+    await loadPubblieMetaAdsets(accId, campId);
+    updateMappingCtaVisibility();
+  });
+
+  dom.mappingAdsetSelect?.addEventListener("change", () => {
+    updateMappingCtaVisibility();
   });
 
   // Save Mapping
