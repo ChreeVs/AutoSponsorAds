@@ -8,7 +8,7 @@ const AutomationEngine = require("./automationEngine");
 const PubblieService = require("./pubblieService");
 
 const ROOT = __dirname;
-const PORT = Number(process.env.PORT || 4173);
+const PORT = Number(process.env.PORT || 3000);
 const env = { ...loadEnv(path.join(ROOT, ".env")), ...process.env };
 const CRON_SECRET = env.CRON_SECRET || "";
 
@@ -131,38 +131,13 @@ function getClientIp(req) {
   return req.socket.remoteAddress || "127.0.0.1";
 }
 
-function checkLoginRateLimit(req, maxAttempts = 5, windowMs = 5 * 60 * 1000, lockMs = 10 * 60 * 1000) {
+function checkLoginRateLimit(req) {
   const ip = getClientIp(req);
-  const now = Date.now();
-  const record = loginAttempts.get(ip) || { count: 0, firstAttempt: now, blockedUntil: 0 };
-
-  if (record.blockedUntil > now) {
-    const waitSec = Math.ceil((record.blockedUntil - now) / 1000);
-    return {
-      allowed: false,
-      ip,
-      error: `Troppi tentativi falliti. Accesso bloccato per sicurezza. Riprova tra ${waitSec} secondi.`
-    };
-  }
-
-  if (now - record.firstAttempt > windowMs) {
-    record.count = 0;
-    record.firstAttempt = now;
-    record.blockedUntil = 0;
-  }
-
-  loginAttempts.set(ip, record);
-  return { allowed: true, ip, record };
+  return { allowed: true, ip };
 }
 
-function recordFailedLogin(ip, maxAttempts = 5, lockMs = 10 * 60 * 1000) {
-  const now = Date.now();
-  const record = loginAttempts.get(ip) || { count: 0, firstAttempt: now, blockedUntil: 0 };
-  record.count += 1;
-  if (record.count >= maxAttempts) {
-    record.blockedUntil = now + lockMs;
-  }
-  loginAttempts.set(ip, record);
+function recordFailedLogin() {
+  // Nessun blocco temporale sui tentativi di login
 }
 
 function resetLoginRateLimit(ip) {

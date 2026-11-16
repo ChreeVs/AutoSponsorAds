@@ -5,7 +5,10 @@
   "description": "Internal webtool to create Meta ads from published Facebook and Instagram posts.",
   "main": "server.js",
   "scripts": {
+    "dev": "node server.js",
     "start": "node server.js",
+    "build": "node --check server.js && node --check app.js",
+    "lint": "node --check server.js && node --check app.js",
     "check": "node --check server.js && node --check app.js"
   },
   "engines": {
