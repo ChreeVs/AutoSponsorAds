@@ -1,4 +1,5 @@
 const https = require("https");
+const { isStandardPostFormat } = require("./postFilter");
 
 class PubblieService {
   constructor(env = {}) {
@@ -110,7 +111,6 @@ class PubblieService {
 
     const raw = await this.request("/api/v1/projects", { apiKey });
     
-    // Pubblie returns an array of team groups: [ { teamId, teamName, projects: [ ... ] } ]
     let list = [];
     if (Array.isArray(raw)) {
       for (const item of raw) {
@@ -169,7 +169,7 @@ class PubblieService {
     const result = items.map(c => ({
       id: String(c.id || c.channelId),
       name: c.name || c.title || c.username || c.accountName || "Canale Social",
-      provider: (c.provider || c.type || c.platform || "").toLowerCase(), // 'facebook', 'instagram', 'instagram-direct', 'youtube', etc.
+      provider: (c.provider || c.type || c.platform || "").toLowerCase(),
       imageUrl: c.avatarUrl || c.picture || c.imageUrl || c.profilePicture || null,
       accountUsername: c.username || c.screenName || "",
       isDirectPublish: Boolean(c.isDirectPublish ?? true)
@@ -182,12 +182,10 @@ class PubblieService {
   /**
    * Lists posts for a project filtered by status and date range
    * Endpoint: GET /api/v1/projects/{projectId}/posts
-   * Query: status (DRAFT, SCHEDULED, PUBLISHED, PUBLISHING, ERROR), dateFrom, dateTo
    */
   async listProjectPosts(projectId, { status = "", dateFrom = "", dateTo = "" } = {}, apiKey) {
     if (!projectId) throw new Error("projectId mancante");
     
-    // Default date range: from today to +30 days if not set
     const now = new Date();
     const fromStr = dateFrom || now.toISOString();
     const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -207,7 +205,9 @@ class PubblieService {
     });
 
     const items = Array.isArray(raw) ? raw : (raw.data || raw.posts || []);
-    const normalized = items.map(p => this.normalizePost(p, projectId));
+    // Strictly filter only standard "POST" format items (exclude Stories, Reels, Shorts, etc.)
+    const postOnlyItems = items.filter(p => isStandardPostFormat(p));
+    const normalized = postOnlyItems.map(p => this.normalizePost(p, projectId));
 
     // Fast detail enrichment for upcoming posts to extract S3 image thumbnails (max 5 posts sequentially to avoid 429)
     const needImages = normalized.filter(p => (!p.images || p.images.length === 0) && (p.imageCount > 0 || p.hasMedia)).slice(0, 5);
@@ -268,18 +268,24 @@ class PubblieService {
     } else if (typeof p.channelIds === "string") {
       channelIds = p.channelIds.split(",").map(s => s.trim()).filter(Boolean);
     } else if (Array.isArray(p.accounts)) {
-      channelIds = p.accounts.map(a => String(a.channelId || a.id || a.accountName || a.provider)).filter(Boolean);
+      channelIds = p.accounts.map(a => String(a.channelId || a.id || "")).filter(Boolean);
     }
 
-    const accounts = Array.isArray(p.accounts) ? p.accounts.map(a => ({
-      provider: a.provider || "meta",
-      accountName: a.accountName || a.name || "",
-      channelId: String(a.channelId || a.id || "")
-    })) : [];
+    const accounts = Array.isArray(p.accounts)
+      ? p.accounts
+          .filter(a => isStandardPostFormat(p, a))
+          .map(a => ({
+            provider: a.provider || a.platform || a.type || "",
+            accountName: a.accountName || a.name || a.username || "",
+            channelId: String(a.channelId || a.id || ""),
+            postType: a.postType || a.type || a.format || "POST"
+          }))
+      : [];
 
     return {
       id: String(p.id || p.postId),
       projectId: String(p.projectId || projectId || ""),
+      postType: "POST",
       text: p.body || p.text || p.content || p.caption || p.message || "",
       scheduleDateTime: p.scheduleDate || p.scheduleDateTime || p.scheduledAt || p.publishAt || null,
       publishedAt: p.publishDate || p.publishedAt || p.publishedDateTime || null,

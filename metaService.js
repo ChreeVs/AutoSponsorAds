@@ -430,19 +430,29 @@ class MetaService {
   }
 
   async getFacebookPosts(pageId, limit = 25) {
+    const { isStandardPostFormat } = require("./postFilter");
     const pageAccessToken = this.pageTokenForId(pageId) || await this.dynamicPageTokenForId(pageId);
-    return await this.graph(`/${pageId}/posts`, {
-      fields: "id,message,permalink_url,created_time,full_picture,status_type,attachments{media_type,title,description,unshimmed_url}",
+    const payload = await this.graph(`/${pageId}/posts`, {
+      fields: "id,message,permalink_url,created_time,full_picture,status_type,attachments{media_type,type,title,description,unshimmed_url}",
       limit: String(limit)
     }, pageAccessToken || this.token());
+    if (Array.isArray(payload?.data)) {
+      payload.data = payload.data.filter(p => isStandardPostFormat(p));
+    }
+    return payload;
   }
 
   async getInstagramMedia(instagramId, pageId = null, limit = 25) {
+    const { isStandardPostFormat } = require("./postFilter");
     const pageAccessToken = this.pageTokenForInstagramId(instagramId) || (pageId ? await this.dynamicPageTokenForId(pageId) : null);
-    return await this.graph(`/${instagramId}/media`, {
-      fields: "id,caption,media_type,media_url,permalink,timestamp,thumbnail_url",
+    const payload = await this.graph(`/${instagramId}/media`, {
+      fields: "id,caption,media_type,media_product_type,media_url,permalink,timestamp,thumbnail_url",
       limit: String(limit)
     }, pageAccessToken || this.token());
+    if (Array.isArray(payload?.data)) {
+      payload.data = payload.data.filter(p => isStandardPostFormat(p));
+    }
+    return payload;
   }
 
   async checkTokenHealth() {

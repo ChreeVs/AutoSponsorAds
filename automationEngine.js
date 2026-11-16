@@ -1,4 +1,5 @@
 const db = require("./db");
+const { isStandardPostFormat } = require("./postFilter");
 
 function normalizeContentText(str) {
   if (!str) return "";
@@ -144,20 +145,24 @@ class AutomationEngine {
       let rawPosts = [];
       if (automation.platform === "Facebook") {
         const payload = await this.meta.getFacebookPosts(automation.source_id, 25);
-        rawPosts = (payload.data || []).map(p => ({
-          id: p.id,
-          message: p.message || p.attachments?.data?.[0]?.title || "",
-          permalink: p.permalink_url || "",
-          createdTime: p.created_time
-        }));
+        rawPosts = (payload.data || [])
+          .filter(p => isStandardPostFormat(p))
+          .map(p => ({
+            id: p.id,
+            message: p.message || p.attachments?.data?.[0]?.title || "",
+            permalink: p.permalink_url || "",
+            createdTime: p.created_time
+          }));
       } else {
         const payload = await this.meta.getInstagramMedia(automation.source_id, automation.page_id, 25);
-        rawPosts = (payload.data || []).map(p => ({
-          id: p.id,
-          message: normalizeContentText(p.caption || ""),
-          permalink: p.permalink || "",
-          createdTime: p.timestamp
-        }));
+        rawPosts = (payload.data || [])
+          .filter(p => isStandardPostFormat(p))
+          .map(p => ({
+            id: p.id,
+            message: normalizeContentText(p.caption || ""),
+            permalink: p.permalink || "",
+            createdTime: p.timestamp
+          }));
       }
 
       report.postsFound = rawPosts.length;

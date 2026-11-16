@@ -4,25 +4,25 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AutoSponsorAds - Automazione e Sponsorizzazione Meta Ads</title>
-    <meta name="description" content="Piattaforma per la sponsorizzazione automatica e bulk di post e reel Facebook e Instagram su Meta Ads.">
+    <meta name="description" content="Piattaforma per la sponsorizzazione automatica e bulk di post Facebook e Instagram su Meta Ads.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=2.5">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=3.0">
   </head>
   <body>
     <!-- Login & Protection Overlay -->
     <div class="auth-overlay" id="authOverlay">
       <div class="auth-card">
         <div class="auth-header">
-          <div class="auth-icon-badge">⚡</div>
+          <div class="auth-icon-badge">ADS</div>
           <h2 class="auth-title">AutoSponsorAds</h2>
-          <p class="auth-subtitle" id="authSubtitle">Pannello Protetto • Meta Ads</p>
+          <p class="auth-subtitle" id="authSubtitle">Pannello Protetto - Meta Ads</p>
         </div>
 
         <div class="auth-body">
           <div class="auth-info-banner" id="authInfoBanner">
-            🔒 Inserisci la <strong>Master Password</strong> per accedere al pannello e gestire le inserzioni dei clienti Meta.
+            Inserisci la <strong>Master Password</strong> per accedere al pannello e gestire le inserzioni dei clienti Meta.
           </div>
 
           <form id="authForm" autocomplete="on">
@@ -31,9 +31,9 @@
               <label for="authNewPassword">Crea Nuova Master Password <span class="required">*</span></label>
               <div class="password-wrapper">
                 <input id="authNewPassword" type="password" placeholder="Minimo 8 caratteri..." autocomplete="new-password">
-                <button type="button" class="btn-toggle-pwd" id="toggleNewPwdBtn" title="Mostra/Nascondi">👁️</button>
+                <button type="button" class="btn-toggle-pwd" id="toggleNewPwdBtn" title="Mostra o Nascondi">MOSTRA</button>
               </div>
-              <small class="help-text">Questa password proteggerà l'accesso da qualsiasi computer o dispositivo.</small>
+              <small class="help-text">Questa password proteggera l'accesso da qualsiasi computer o dispositivo.</small>
             </div>
 
             <!-- Login mode: Inserisci Password -->
@@ -41,7 +41,7 @@
               <label for="authPassword">Master Password <span class="required">*</span></label>
               <div class="password-wrapper">
                 <input id="authPassword" type="password" placeholder="Inserisci la password..." autocomplete="current-password" required autofocus>
-                <button type="button" class="btn-toggle-pwd" id="togglePwdBtn" title="Mostra/Nascondi">👁️</button>
+                <button type="button" class="btn-toggle-pwd" id="togglePwdBtn" title="Mostra o Nascondi">MOSTRA</button>
               </div>
             </div>
 
@@ -49,1149 +49,996 @@
 
             <button class="btn btn-primary auth-submit-btn" id="authSubmitBtn" type="submit">
               <span class="spinner" id="authSpinner" style="display: none;"></span>
-              <span id="authSubmitBtnText">Sblocca Accesso 🔓</span>
+              <span id="authSubmitBtnText">Sblocca Accesso</span>
             </button>
           </form>
         </div>
 
         <div class="auth-footer">
-          <span>🛡️ Crittografia di sessione attiva • I tuoi clienti Meta sono protetti.</span>
+          <span>Crittografia di sessione attiva - I tuoi clienti Meta sono protetti.</span>
         </div>
       </div>
     </div>
 
-    <!-- App Navigation Header -->
-    <header class="main-nav" id="mainNav">
-      <div class="nav-container">
+    <!-- App 3-Column Shell: Left Menu | Center Workspace | Right Platform Status -->
+    <div class="app-shell">
+      <!-- ============================================================== -->
+      <!-- LEFT SIDEBAR NAVIGATION                                        -->
+      <!-- ============================================================== -->
+      <aside class="sidebar-nav" id="mainNav">
         <div class="brand">
-          <div class="brand-badge">⚡</div>
-          <div>
+          <div class="brand-badge">ADS</div>
+          <div class="brand-text">
             <h1 class="brand-title">AutoSponsorAds</h1>
-            <span class="brand-subtitle">Meta Ads Automation Engine</span>
+            <span class="brand-subtitle">Meta Ads Engine</span>
           </div>
         </div>
 
+        <div class="sidebar-section-label">MENU PRINCIPALE</div>
         <nav class="nav-tabs" role="tablist" aria-label="Sezioni applicazione">
           <button class="nav-tab active" id="tabBtnAutomations" type="button" role="tab" aria-selected="true" data-tab="automationsView">
-            <span>⚡ Automazioni</span>
+            <span class="nav-tab-indicator"></span>
+            <span class="nav-tab-label">Automazioni</span>
             <span class="tab-badge" id="badgeActiveCount">0</span>
           </button>
           <button class="nav-tab" id="tabBtnTimeline" type="button" role="tab" aria-selected="false" data-tab="timelineView">
-            <span>📅 Timeline Flow</span>
+            <span class="nav-tab-indicator"></span>
+            <span class="nav-tab-label">Timeline Flow</span>
             <span class="tab-badge" id="badgeTimelineCount">0</span>
           </button>
           <button class="nav-tab" id="tabBtnManual" type="button" role="tab" aria-selected="false" data-tab="manualView">
-            <span>📦 Sponsor Manuale</span>
+            <span class="nav-tab-indicator"></span>
+            <span class="nav-tab-label">Sponsor Manuale</span>
           </button>
           <button class="nav-tab" id="tabBtnLogs" type="button" role="tab" aria-selected="false" data-tab="logsView">
-            <span>📋 Storico & Log</span>
+            <span class="nav-tab-indicator"></span>
+            <span class="nav-tab-label">Storico e Log</span>
           </button>
           <button class="nav-tab" id="tabBtnGuide" type="button" role="tab" aria-selected="false" data-tab="guideView">
-            <span>⚙️ Setup Render</span>
+            <span class="nav-tab-indicator"></span>
+            <span class="nav-tab-label">Setup Render</span>
           </button>
         </nav>
 
-        <div class="nav-actions">
-          <div class="header-next-check-badge" id="headerNextCheckBadge" title="Tempo rimanente al prossimo controllo automatico delle automazioni">
-            <span class="timer-pulse-dot" id="headerTimerDot"></span>
-            <span class="timer-badge-icon">⏱️</span>
-            <div class="timer-badge-content">
-              <span class="timer-badge-label">Prossimo check</span>
-              <strong class="timer-badge-value" id="headerCountdownTimer">--:--:--</strong>
-            </div>
-          </div>
-          <button class="btn btn-secondary btn-sm" id="globalRunBtn" type="button" title="Avvia subito il controllo di tutte le automazioni">
-            <span class="spinner" id="globalRunSpinner" hidden></span>
-            <span id="globalRunText">▶ Esegui Tutto Ora</span>
-          </button>
-          <button class="btn btn-primary btn-sm" id="openNewAutoModalBtn" type="button">
+        <div class="sidebar-actions">
+          <div class="sidebar-section-label">AZIONI RAPIDE</div>
+          <button class="btn btn-primary btn-block" id="openNewAutoModalBtn" type="button">
             <span>+ Nuova Automazione</span>
           </button>
-          <button class="btn btn-ghost btn-sm" id="logoutBtn" type="button" title="Disconnettiti e blocca l'accesso al pannello" style="color: var(--text-muted); border-color: var(--border-subtle);">
-            🔒 Esci
+          <button class="btn btn-secondary btn-block" id="globalRunBtn" type="button" title="Avvia subito il controllo di tutte le automazioni">
+            <span class="spinner" id="globalRunSpinner" hidden></span>
+            <span id="globalRunText">Esegui Tutto Ora</span>
+          </button>
+          <button class="btn btn-ghost btn-block" id="logoutBtn" type="button" title="Disconnettiti e blocca l'accesso al pannello">
+            Disconnetti Sessione
           </button>
         </div>
-      </div>
-    </header>
-
-    <main class="main-content">
-      <!-- Top Global Notification Banner -->
-      <div class="banner banner-info" id="globalBanner" hidden>
-        <span class="banner-icon">ℹ️</span>
-        <span class="banner-text" id="globalBannerText"></span>
-        <button class="banner-close" id="globalBannerClose" type="button">✕</button>
-      </div>
+      </aside>
 
       <!-- ============================================================== -->
-      <!-- VIEW 1: AUTOMAZIONI (AUTO-PILOT)                               -->
+      <!-- CENTER MAIN WORKSPACE                                          -->
       <!-- ============================================================== -->
-      <section class="app-view active" id="automationsView" role="tabpanel" aria-labelledby="tabBtnAutomations">
-        <!-- Summary Stats Strip -->
-        <div class="kpi-grid">
+      <main class="main-content">
+        <!-- Top Global Notification Banner -->
+        <div class="banner banner-info" id="globalBanner" hidden>
+          <span class="banner-icon">[INFO]</span>
+          <span class="banner-text" id="globalBannerText"></span>
+          <button class="banner-close" id="globalBannerClose" type="button">X</button>
+        </div>
+
+        <!-- ============================================================== -->
+        <!-- VIEW 1: AUTOMAZIONI (ELENCO)                                   -->
+        <!-- ============================================================== -->
+        <section class="app-view active" id="automationsView" role="tabpanel" aria-labelledby="tabBtnAutomations">
+          <div class="section-header">
+            <div>
+              <span class="section-eyebrow">MOTORE DI SPONSORIZZAZIONE AUTOMATICA</span>
+              <h2>Elenco Regole di Monitoraggio</h2>
+              <p>I profili e le pagine configurati vengono controllati periodicamente. Vengono sponsorizzati esclusivamente i nuovi contenuti in formato POST pubblicati dopo la data di attivazione.</p>
+            </div>
+            <div class="section-actions">
+              <div class="search-box">
+                <input id="autoSearchInput" type="search" placeholder="Cerca regola, cliente o pagina...">
+              </div>
+              <select id="autoFilterStatus" class="select-sm">
+                <option value="ALL">Tutti gli stati</option>
+                <option value="ACTIVE">Solo Attive</option>
+                <option value="PAUSED">In Pausa</option>
+              </select>
+              <button class="btn btn-primary btn-sm" id="emptyStateNewBtn" type="button">
+                + Crea Regola
+              </button>
+            </div>
+          </div>
+
+          <!-- Automations Vertical List Container -->
+          <div class="automations-list" id="automationsGrid">
+            <!-- Popolato via JS come elenco strutturato -->
+          </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- VIEW 2: TIMELINE FLOW                                          -->
+        <!-- ============================================================== -->
+        <section class="app-view" id="timelineView" role="tabpanel" aria-labelledby="tabBtnTimeline" hidden>
+          <div class="section-header timeline-top-header">
+            <div>
+              <span class="section-eyebrow">PROGRAMMAZIONE E CONTROLLO PREVENTIVO</span>
+              <h2>Timeline Flow (Facebook e Instagram - Solo Formato POST)</h2>
+              <p>Visualizza in ordine cronologico i post programmati e pubblicati sui canali Facebook e Instagram. Sono esclusi automaticamente altri canali social e i formati diversi da POST (Storie, Reel, ecc.).</p>
+            </div>
+            <div class="section-actions">
+              <button class="btn btn-secondary btn-sm" id="openPubblieModalBtn" type="button">
+                Configura Pubblie e Mappatura Canali
+              </button>
+              <button class="btn btn-primary btn-sm" id="refreshTimelineBtn" type="button">
+                <span class="spinner" id="refreshTimelineSpinner" hidden></span>
+                <span>Aggiorna Timeline</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Timeline Filter & Bulk Bar -->
+          <div class="timeline-controls-bar card-panel">
+            <div class="timeline-filters">
+              <div class="filter-group">
+                <label for="tlFilterProject">Progetto / Cliente Pubblie</label>
+                <select id="tlFilterProject" class="select-sm">
+                  <option value="">Tutti i Progetti Attivi</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="tlFilterPlatform">Canale Meta</label>
+                <select id="tlFilterPlatform" class="select-sm">
+                  <option value="meta" selected>Tutti i Canali Meta (FB + IG)</option>
+                  <option value="instagram">Solo Instagram (POST)</option>
+                  <option value="facebook">Solo Facebook (POST)</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="tlFilterStatus">Stato nel Flow</label>
+                <select id="tlFilterStatus" class="select-sm">
+                  <option value="">Tutti gli stati</option>
+                  <option value="FUTURE">Solo Programmati (Futuri)</option>
+                  <option value="INCLUDED">Inclusi nel Flow (Auto-Sponsor)</option>
+                  <option value="EXCLUDED">Esclusi dal Flow (Non Sponsorizzare)</option>
+                  <option value="SPONSORED">Gia Sponsorizzati</option>
+                </select>
+              </div>
+              <div class="filter-group search-group">
+                <label for="tlSearchInput">Cerca nel testo del post</label>
+                <input id="tlSearchInput" type="search" placeholder="Testo, #hashtag o canale...">
+              </div>
+            </div>
+
+            <div class="timeline-bulk-actions">
+              <button class="btn btn-secondary btn-xs" id="tlIncludeAllBtn" type="button" title="Includi tutti i post visibili nel flusso di sponsorizzazione">
+                Includi Tutti nel Flow
+              </button>
+              <button class="btn btn-ghost btn-xs" id="tlExcludeAllBtn" type="button" title="Escludi tutti i post visibili dalla sponsorizzazione automatica">
+                Escludi Tutti
+              </button>
+            </div>
+          </div>
+
+          <!-- Visual Chronological Timeline Container -->
+          <div class="timeline-flow-container" id="timelineFlowContainer">
+            <!-- Popolato dinamicamente raggruppato per data con righe chiare -->
+          </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- VIEW 3: SPONSOR MANUALE & BULK                                 -->
+        <!-- ============================================================== -->
+        <section class="app-view" id="manualView" role="tabpanel" aria-labelledby="tabBtnManual" hidden>
+          <div class="section-header">
+            <div>
+              <span class="section-eyebrow">CREAZIONE INSERZIONI IMMEDIATA</span>
+              <h2>Sponsorizzazione Manuale e Bulk (Solo POST)</h2>
+              <p>Seleziona uno o piu post gia pubblicati su una Pagina Facebook o un Profilo Instagram e crea immediatamente le inserzioni su Meta Ads.</p>
+            </div>
+          </div>
+
+          <div class="manual-workspace">
+            <!-- Left Config Column -->
+            <div class="card-panel">
+              <div class="panel-header">
+                <span class="step-num">1</span>
+                <div>
+                  <h3>Destinazione Meta Ads</h3>
+                  <p>Scegli dove pubblicare le inserzioni</p>
+                </div>
+              </div>
+
+              <div class="form-stack">
+                <div class="form-group">
+                  <label for="manualAdAccount">Account Pubblicitario</label>
+                  <select id="manualAdAccount"></select>
+                </div>
+
+                <div class="form-group">
+                  <label for="manualCampaign">Campagna</label>
+                  <select id="manualCampaign"></select>
+                </div>
+
+                <div class="form-group">
+                  <label for="manualAdset">Gruppo di Inserzioni (AdSet)</label>
+                  <select id="manualAdset"></select>
+                </div>
+
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label for="manualPlatform">Piattaforma Sorgente</label>
+                    <select id="manualPlatform">
+                      <option value="Facebook">Pagina Facebook (POST)</option>
+                      <option value="Instagram">Profilo Instagram (POST)</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="manualSource">Pagina / Profilo</label>
+                    <select id="manualSource"></select>
+                  </div>
+                </div>
+
+                <div class="form-row-2">
+                  <div class="form-group">
+                    <label for="manualAdStatus">Stato Iniziale Inserzioni</label>
+                    <select id="manualAdStatus">
+                      <option value="PAUSED">In Pausa (Consigliato)</option>
+                      <option value="ACTIVE">Attiva Subito</option>
+                    </select>
+                  </div>
+
+                  <div class="form-group">
+                    <label for="manualRule">Regola Automatica (Opzionale)</label>
+                    <select id="manualRule">
+                      <option value="">Nessuna regola</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="manualKeywordFilter">Filtra post per Hashtag / Parola chiave</label>
+                  <input id="manualKeywordFilter" type="text" placeholder="Es: #sponsor, #promo, lancio">
+                </div>
+
+                <button class="btn btn-secondary btn-block" id="manualLoadPostsBtn" type="button">
+                  Carica Post dalla Sorgente
+                </button>
+              </div>
+            </div>
+
+            <!-- Right Posts Selection Column -->
+            <div class="card-panel">
+              <div class="panel-header split">
+                <div class="row-align">
+                  <span class="step-num">2</span>
+                  <div>
+                    <h3>Seleziona i Post da Sponsorizzare</h3>
+                    <p id="manualPostsSubtitle">Carica i post di una pagina o profilo per iniziare</p>
+                  </div>
+                </div>
+                <div class="row-actions">
+                  <button class="btn btn-ghost btn-xs" id="manualSelectAllBtn" type="button">Seleziona Tutti</button>
+                  <button class="btn btn-ghost btn-xs" id="manualDeselectAllBtn" type="button">Deseleziona</button>
+                </div>
+              </div>
+
+              <div class="manual-posts-list" id="manualPostsList">
+                <div class="empty-box">
+                  <p>Seleziona un account pubblicitario e una sorgente a sinistra, poi clicca su <strong>Carica Post dalla Sorgente</strong>.</p>
+                </div>
+              </div>
+
+              <div class="panel-footer">
+                <div class="selection-summary">
+                  <strong id="manualSelectedCount">0</strong> post selezionati
+                </div>
+                <button class="btn btn-primary" id="manualSponsorBtn" type="button" disabled>
+                  <span class="spinner" id="manualSponsorSpinner" hidden></span>
+                  <span id="manualSponsorText">Sponsorizza Post Selezionati</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- VIEW 4: STORICO & LOG                                          -->
+        <!-- ============================================================== -->
+        <section class="app-view" id="logsView" role="tabpanel" aria-labelledby="tabBtnLogs" hidden>
+          <div class="dual-tables-grid">
+            <!-- Processed Posts Table -->
+            <div class="card-panel">
+              <div class="panel-header split">
+                <div>
+                  <h3>Post Sponsorizzati (Database Anti-Duplicazione)</h3>
+                  <p>Ogni post registrato qui non verra mai sponsorizzato una seconda volta dalle automazioni.</p>
+                </div>
+                <button class="btn btn-secondary btn-xs" id="refreshLogsBtn" type="button">Aggiorna Dati</button>
+              </div>
+
+              <div class="table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Data</th>
+                      <th>Piattaforma / Sorgente</th>
+                      <th>Post</th>
+                      <th>Inserzione Creata</th>
+                      <th>Stato</th>
+                      <th>Azioni</th>
+                    </tr>
+                  </thead>
+                  <tbody id="processedPostsTableBody">
+                    <!-- Popolato via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Execution Logs Table -->
+            <div class="card-panel">
+              <div class="panel-header">
+                <div>
+                  <h3>Registro Esecuzioni (Cron e Manuali)</h3>
+                  <p>Storico degli ultimi controlli effettuati dal motore automatico.</p>
+                </div>
+              </div>
+
+              <div class="table-container">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Data / Ora</th>
+                      <th>Automazione</th>
+                      <th>Trigger</th>
+                      <th>Post Trovati</th>
+                      <th>Ads Create</th>
+                      <th>Esito</th>
+                    </tr>
+                  </thead>
+                  <tbody id="executionLogsTableBody">
+                    <!-- Popolato via JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============================================================== -->
+        <!-- VIEW 5: GUIDA SETUP RENDER & CRON-JOB                          -->
+        <!-- ============================================================== -->
+        <section class="app-view" id="guideView" role="tabpanel" aria-labelledby="tabBtnGuide" hidden>
+          <div class="guide-layout">
+            <!-- Card Rinnovo Token Meta 1-Click -->
+            <div class="card-panel guide-card" style="grid-column: 1 / -1; border-color: var(--neon);">
+              <div class="panel-header split">
+                <div>
+                  <span class="badge-pill">AUTENTICAZIONE DIRETTA META</span>
+                  <h3>Connessione Rapida Facebook Login (Rinnovo Token 60 Giorni)</h3>
+                  <p>Collega o rinnova il tuo token Meta Ads direttamente dal browser e salvalo nel database persistente.</p>
+                </div>
+                <a href="/auth/facebook" class="btn btn-primary" id="fbOAuthBtn">
+                  Connetti / Rinnova con Facebook
+                </a>
+              </div>
+
+              <div class="guide-steps" style="margin-top: 12px;">
+                <div class="guide-step">
+                  <strong>Come abilitare il pulsante "Connetti con Facebook":</strong>
+                  <p>Assicurati di aver inserito nelle variabili d'ambiente su Render (o nel file <code>.env</code>) queste due chiavi della tua App Meta:</p>
+                  <div class="env-vars-list" style="margin-top: 8px;">
+                    <div class="env-item">
+                      <code>META_APP_ID</code>
+                      <span>L'ID della tua App Meta (visibile in alto nella dashboard di Meta for Developers)</span>
+                    </div>
+                    <div class="env-item">
+                      <code>META_APP_SECRET</code>
+                      <span>La chiave segreta dell'App (Impostazioni App &rarr; Di base &rarr; Chiave segreta dell'app)</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card-panel guide-card">
+              <span class="badge-pill">PASSO 1 - HOSTING CLOUD</span>
+              <h3>Configurazione su Render.com</h3>
+              <p>Questa applicazione include gia un file <code>render.yaml</code> pronto per il deploy automatico con database persistente.</p>
+
+              <ol class="guide-steps">
+                <li>
+                  <strong>Carica il progetto su GitHub</strong>
+                  <p>Crea un repository privato su GitHub e carica tutti i file di questa cartella (escluso il file <code>.env</code>).</p>
+                </li>
+                <li>
+                  <strong>Crea il Web Service su Render</strong>
+                  <p>Accedi a Render.com, clicca su <strong>New + &rarr; Web Service</strong> e collega il tuo repository GitHub.</p>
+                </li>
+                <li>
+                  <strong>Configura le Variabili d'Ambiente (Environment Variables)</strong>
+                  <p>Nella sezione <em>Environment</em> di Render, aggiungi le seguenti variabili:</p>
+                  <div class="env-vars-list">
+                    <div class="env-item">
+                      <code>META_ACCESS_TOKEN</code>
+                      <span>Il tuo System User Token o Long-Lived Token di Meta</span>
+                    </div>
+                    <div class="env-item">
+                      <code>CRON_SECRET</code>
+                      <span>Una password segreta a tua scelta (es. <code>mio_segreto_2025</code>) per proteggere l'endpoint cron</span>
+                    </div>
+                    <div class="env-item">
+                      <code>DATABASE_URL</code>
+                      <span>(Opzionale ma consigliato) La stringa di connessione Internal Database URL di un database PostgreSQL creato su Render</span>
+                    </div>
+                  </div>
+                </li>
+              </ol>
+            </div>
+
+            <div class="card-panel guide-card">
+              <span class="badge-pill">PASSO 2 - SCHEDULATORE ESTERNO</span>
+              <h3>Configurazione su cron-job.org</h3>
+              <p>Su cron-job.org puoi attivare tutte le automazioni di tutti i tuoi clienti con un singolo cronjob.</p>
+
+              <div class="cron-config-box">
+                <div class="form-group">
+                  <label>URL da chiamare su cron-job.org</label>
+                  <div class="copy-input-group">
+                    <input id="guideCronUrl" type="text" readonly value="https://tuo-dominio.onrender.com/api/cron/check-and-sponsor">
+                    <button class="btn btn-secondary btn-xs" id="copyCronUrlBtn" type="button">Copia URL</button>
+                  </div>
+                </div>
+
+                <div class="cron-specs">
+                  <div class="spec-row">
+                    <span class="spec-key">Metodo HTTP:</span>
+                    <code class="spec-val">POST</code> (oppure <code>GET</code>)
+                  </div>
+                  <div class="spec-row">
+                    <span class="spec-key">Header di Sicurezza (se hai impostato CRON_SECRET):</span>
+                    <code class="spec-val">Authorization: Bearer &lt;IL_TUO_CRON_SECRET&gt;</code>
+                  </div>
+                  <div class="spec-row">
+                    <span class="spec-key">Frequenza consigliata su cron-job.org:</span>
+                    <code class="spec-val">Ogni 15 minuti (*/15 * * * *)</code> o <code>Ogni ora</code>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- ============================================================== -->
+      <!-- RIGHT SIDEBAR: PLATFORM STATUS PANEL                           -->
+      <!-- ============================================================== -->
+      <aside class="status-panel" id="statusPanel" aria-label="Stato della Piattaforma">
+        <div class="status-panel-header">
+          <span class="status-panel-eyebrow">TELEMETRIA OPERATIVA</span>
+          <h2 class="status-panel-title">Stato Piattaforma</h2>
+        </div>
+
+        <div class="status-cards-stack">
+          <!-- Automazioni Attive -->
           <div class="kpi-card">
-            <span class="kpi-label">Automazioni Attive</span>
+            <div class="kpi-card-top">
+              <span class="kpi-label">Automazioni Attive</span>
+              <span class="status-indicator ok"></span>
+            </div>
             <div class="kpi-value-row">
               <strong class="kpi-value" id="kpiActiveAutomations">0</strong>
               <span class="kpi-sub" id="kpiTotalAutomations">su 0 totali</span>
             </div>
           </div>
+
+          <!-- Prossimo Check -->
           <div class="kpi-card kpi-card-timer" id="kpiNextCheckCard">
-            <span class="kpi-label">⏳ Prossimo Check</span>
-            <div class="kpi-value-row">
-              <strong class="kpi-value timer-display" id="kpiNextCheckTimer">--:--:--</strong>
+            <div class="kpi-card-top">
+              <span class="kpi-label">Prossimo Check</span>
               <span class="status-indicator" id="kpiNextCheckIndicator"></span>
             </div>
+            <div class="kpi-value-row">
+              <strong class="kpi-value timer-display" id="kpiNextCheckTimer">--:--:--</strong>
+            </div>
             <span class="kpi-sub" id="kpiNextCheckSub">Inizializzazione...</span>
+
+            <!-- Hidden/synced header timer elements for full JS compatibility -->
+            <div class="header-next-check-badge" id="headerNextCheckBadge" hidden>
+              <span class="timer-pulse-dot" id="headerTimerDot"></span>
+              <strong class="timer-badge-value" id="headerCountdownTimer">--:--:--</strong>
+            </div>
           </div>
+
+          <!-- Post Sponsorizzati in Auto -->
           <div class="kpi-card">
-            <span class="kpi-label">Post Sponsorizzati in Auto</span>
+            <div class="kpi-card-top">
+              <span class="kpi-label">Post Sponsorizzati in Auto</span>
+            </div>
             <div class="kpi-value-row">
               <strong class="kpi-value" id="kpiProcessedPosts">0</strong>
               <span class="kpi-sub">totali memorizzati</span>
             </div>
           </div>
+
+          <!-- Connessione Meta API -->
           <div class="kpi-card">
-            <span class="kpi-label">Stato Database</span>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiDbType">SQLite</strong>
-              <span class="kpi-sub badge-tag" id="kpiDbStatus">Locale</span>
-            </div>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-label">Connessione Meta API</span>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiMetaStatus">Verifica...</strong>
+            <div class="kpi-card-top">
+              <span class="kpi-label">Connessione Meta API</span>
               <span class="status-indicator" id="kpiMetaIndicator"></span>
             </div>
+            <div class="kpi-value-row">
+              <strong class="kpi-value" id="kpiMetaStatus">Verifica...</strong>
+            </div>
           </div>
-        </div>
 
-        <!-- Automation Controls Header -->
-        <div class="section-header">
-          <div>
-            <h2>Regole di Monitoraggio Attive</h2>
-            <p>I profili e le pagine configurati vengono controllati periodicamente. I nuovi contenuti vengono sponsorizzati in automatico.</p>
-          </div>
-          <div class="section-actions">
-            <button class="btn btn-ghost" id="refreshAutomationsBtn" type="button">🔄 Aggiorna</button>
-            <button class="btn btn-primary" id="createAutomationBannerBtn" type="button">+ Aggiungi Automazione</button>
-          </div>
-        </div>
-
-        <!-- Automations List Grid -->
-        <div class="automations-grid" id="automationsGrid">
-          <!-- Dynamic cards injected by app.js -->
-          <div class="empty-state" id="automationsEmptyState">
-            <div class="empty-icon">🤖</div>
-            <h3>Nessuna automazione attiva</h3>
-            <p>Crea la tua prima regola per monitorare una pagina Facebook o un profilo Instagram e sponsorizzare automaticamente ogni nuovo post pubblicato.</p>
-            <button class="btn btn-primary" id="emptyCreateBtn" type="button">+ Crea Prima Automazione</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============================================================== -->
-      <!-- VIEW 1B: TIMELINE FLOW & FORECAST PUBBLIE.IO                   -->
-      <!-- ============================================================== -->
-      <section class="app-view" id="timelineView" role="tabpanel" aria-labelledby="tabBtnTimeline" hidden>
-        <!-- View Header Strip -->
-        <div class="view-header-strip">
-          <div>
-            <h2>📅 Flow di Sponsorizzazione & Linea Temporale</h2>
-            <p>Previsione dei post futuri in uscita da <strong>Pubblie.io</strong> e selezione strategica dei contenuti da sponsorizzare su Meta Ads.</p>
-          </div>
-          <div class="header-actions">
-            <button class="btn btn-secondary btn-sm" id="openPubblieConfigBtn" type="button">
-              <span>⚙️ Configura Pubblie & Parametri Meta</span>
-            </button>
-            <button class="btn btn-primary btn-sm" id="refreshTimelineBtn" type="button">
-              <span class="spinner" id="timelineSpinner" style="display: none;"></span>
-              <span id="refreshTimelineBtnText">🔄 Sincronizza Previsioni</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- KPI Strip for Timeline -->
-        <div class="kpi-grid" style="margin-bottom: 24px;">
+          <!-- Stato Database -->
           <div class="kpi-card">
-            <span class="kpi-label">🔮 Post Futuri Schedulati</span>
+            <div class="kpi-card-top">
+              <span class="kpi-label">Stato Database</span>
+              <span class="kpi-sub badge-tag" id="kpiDbStatus">Locale</span>
+            </div>
             <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiTimelineFuture">0</strong>
-              <span class="kpi-sub">in uscita su Pubblie</span>
+              <strong class="kpi-value" id="kpiDbType">SQLite</strong>
             </div>
           </div>
-          <div class="kpi-card" style="border-color: rgba(16, 185, 129, 0.35);">
-            <span class="kpi-label">🟢 Inclusi nel Flow</span>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiTimelineIncluded" style="color: var(--accent-emerald);">0</strong>
-              <span class="kpi-sub">verranno sponsorizzati</span>
-            </div>
-          </div>
+
+          <!-- Stato Pubblie -->
           <div class="kpi-card">
-            <span class="kpi-label">⛔ Esclusi dal Flow</span>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiTimelineExcluded" style="color: var(--text-muted);">0</strong>
-              <span class="kpi-sub">ignorati dall'engine</span>
+            <div class="kpi-card-top">
+              <span class="kpi-label">Collegamento Pubblie</span>
+              <span class="status-indicator" id="pubblieStatusDot"></span>
             </div>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-label">🚀 Già Sponsorizzati</span>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiTimelineSponsored" style="color: var(--accent-blue);">0</strong>
-              <span class="kpi-sub">inserzioni create</span>
-            </div>
-          </div>
-          <div class="kpi-card">
-            <span class="kpi-label">🔗 Collegamento Pubblie</span>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiPubblieStatus" style="font-size: 1.05rem;">Verifica...</strong>
-              <span class="status-indicator" id="kpiPubblieIndicator"></span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Banner Prompt if Pubblie is not configured -->
-        <div class="pubblie-connect-banner" id="pubblieConnectPrompt" style="display: none;">
-          <div class="pubblie-banner-content">
-            <div class="pubblie-banner-icon">🔮</div>
-            <div>
-              <h4 style="margin: 0 0 6px 0; font-size: 1.05rem; font-weight: 700;">Collega Pubblie.io per vedere la previsione dei post che usciranno</h4>
-              <p style="margin: 0; font-size: 0.88rem; color: var(--text-muted); line-height: 1.45;">
-                Inserisci la tua API Key di Pubblie e associa i parametri Meta (Account, Campagna, AdSet) <strong>una sola volta</strong>.
-                Potrai visualizzare tutti i post programmati in anticipo, decidere quali sponsorizzare e creare il tuo flow personalizzato.
-              </p>
-            </div>
-          </div>
-          <button class="btn btn-primary btn-sm" id="promptConnectPubblieBtn" type="button" style="white-space: nowrap;">
-            ⚡ Collega Pubblie Ora
-          </button>
-        </div>
-
-        <!-- Streamlined Timeline Controls & Filter Bar -->
-        <div class="timeline-controls-bar">
-          <div class="timeline-filter-group">
-            <div class="timeline-project-filter-header">
-              <label class="filter-label" for="timelineFilterProject">Progetto:</label>
-              <button type="button" class="btn btn-ghost btn-xs" id="managePubblieProjectsBtn" title="Archivia o ripristina progetti Pubblie">
-                📁 Archivia (<span id="archivedProjectsCountBadge">0</span>)
-              </button>
-            </div>
-            <select id="timelineFilterProject" class="filter-select">
-              <option value="">Tutti i Progetti Attivi</option>
-            </select>
-          </div>
-
-          <div class="timeline-filter-group">
-            <label class="filter-label" for="timelineFilterPlatform">Canali:</label>
-            <select id="timelineFilterPlatform" class="filter-select">
-              <option value="meta" selected>Meta (FB + IG)</option>
-              <option value="Instagram">📸 Solo Instagram</option>
-              <option value="Facebook">📘 Solo Facebook</option>
-              <option value="other">🌐 Social Esterni (TikTok, LinkedIn...)</option>
-              <option value="all">🌟 Tutti i Canali</option>
-            </select>
-          </div>
-
-          <div class="timeline-filter-group">
-            <label class="filter-label" for="timelineFilterStatus">Stato:</label>
-            <select id="timelineFilterStatus" class="filter-select">
-              <option value="">Tutti gli stati</option>
-              <option value="INCLUDED">🟢 Inclusi nel Flow</option>
-              <option value="EXCLUDED">⛔ Esclusi</option>
-              <option value="FUTURE">🔮 Previsioni Future</option>
-              <option value="SPONSORED">🚀 Sponsorizzati</option>
-            </select>
-          </div>
-
-          <div class="timeline-filter-group">
-            <label class="filter-label" for="timelineFilterDays">Arco:</label>
-            <select id="timelineFilterDays" class="filter-select">
-              <option value="7">7 giorni</option>
-              <option value="14">14 giorni</option>
-              <option value="30" selected>30 giorni</option>
-              <option value="60">60 giorni</option>
-            </select>
-          </div>
-
-          <div class="timeline-search-group">
-            <input id="timelineSearchInput" type="search" placeholder="🔍 Cerca nei post..." autocomplete="off">
-          </div>
-
-          <div class="timeline-bulk-actions">
-            <button class="btn btn-secondary btn-sm" id="timelineScrollTodayBtn" type="button" title="Centra la vista sulla data di Oggi">
-              🎯 Oggi
-            </button>
-            <button class="btn btn-ghost btn-sm" id="timelineIncludeAllBtn" type="button" title="Includi tutti i post visibili nel flow">
-              ✓ Includi Tutti
-            </button>
-            <button class="btn btn-ghost btn-sm" id="timelineExcludeAllBtn" type="button" title="Escludi tutti i post visibili dal flow">
-              ✕ Escludi Tutti
-            </button>
-          </div>
-        </div>
-
-        <!-- Timeline Stream Container (Horizontal Rail) -->
-        <div class="timeline-container">
-          <div class="timeline-stream-wrapper" id="timelineStreamWrapper">
-            <div class="timeline-stream horizontal-stream" id="timelineStream">
-              <!-- Chronological date columns & cards dynamically injected -->
+            <div class="kpi-value-row" id="pubblieStatusBadge">
+              <strong class="kpi-value kpi-value-sm" id="pubblieStatusText">Verifica Pubblie...</strong>
             </div>
           </div>
 
-          <!-- Empty State -->
-          <div class="empty-state" id="timelineEmptyState" style="display: none;">
-            <div class="empty-icon">📅</div>
-            <h3>Nessun post trovato nella linea temporale</h3>
-            <p id="timelineEmptyText">Collega Pubblie.io o verifica i filtri impostati per visualizzare la previsione dei post programmati.</p>
-            <button class="btn btn-primary" id="timelineEmptyActionBtn" type="button">⚙️ Configura Pubblie & Parametri Meta</button>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============================================================== -->
-      <!-- VIEW 2: SPONSOR MANUALE (BULK SPONSOR ESISTENTE)              -->
-      <!-- ============================================================== -->
-      <section class="app-view" id="manualView" role="tabpanel" aria-labelledby="tabBtnManual" hidden>
-        <div class="view-header-strip">
-          <div>
-            <h2>Sponsorizzazione Manuale in Bulk</h2>
-            <p>Seleziona i post storici già pubblicati su Facebook o Instagram e crea inserzioni in blocco.</p>
-          </div>
-          <div class="header-actions">
-            <button class="btn btn-secondary" id="exportBtn" type="button">Esporta Batch</button>
-            <button class="btn btn-primary" id="createAdsBtn" type="button">Crea inserzioni in pausa</button>
-          </div>
-        </div>
-
-        <section class="status-strip" aria-label="Riepilogo">
-          <div>
-            <span>Account</span>
-            <strong id="summaryAccount">Non selezionato</strong>
-          </div>
-          <div>
-            <span>Campagna</span>
-            <strong id="summaryCampaign">Non selezionata</strong>
-          </div>
-          <div>
-            <span>Gruppo inserzioni</span>
-            <strong id="summaryAdset">Non selezionato</strong>
-          </div>
-          <div>
-            <span>Post in coda</span>
-            <strong id="metricQueued">0</strong>
-          </div>
-        </section>
-
-        <!-- Step 1: Destination -->
-        <div class="step-card">
-          <div class="step-heading">
-            <div class="step-number">1</div>
-            <div>
-              <h3>Scegli dove creare le inserzioni</h3>
-              <p>Filtra le liste, seleziona la destinazione e passa ai post.</p>
+          <!-- Riepilogo Timeline Flow -->
+          <div class="kpi-card status-summary-box">
+            <div class="kpi-card-top">
+              <span class="kpi-label">Metriche Timeline Flow</span>
             </div>
-            <button class="btn btn-ghost btn-sm" id="refreshTargetBtn" type="button">Ricarica</button>
-          </div>
-
-          <div class="path-helper" aria-label="Percorso selezione">
-            <div class="path-step" id="pathAccount">
-              <span>Account</span>
-              <strong>Da scegliere</strong>
-            </div>
-            <div class="path-step" id="pathCampaign">
-              <span>Campagna</span>
-              <strong>Da scegliere</strong>
-            </div>
-            <div class="path-step" id="pathAdset">
-              <span>Gruppo</span>
-              <strong>Da scegliere</strong>
-            </div>
-            <div class="path-step" id="pathRule">
-              <span>Regola</span>
-              <strong>Facoltativa</strong>
-            </div>
-          </div>
-
-          <div class="target-grid">
-            <label>
-              Cerca account
-              <input id="accountSearch" type="search" placeholder="Nome account..." autocomplete="off">
-            </label>
-            <label>
-              Cerca campagna
-              <input id="campaignSearch" type="search" placeholder="Nome campagna..." autocomplete="off">
-            </label>
-            <label>
-              Cerca gruppo
-              <input id="adsetSearch" type="search" placeholder="Nome gruppo..." autocomplete="off">
-            </label>
-            <label>
-              Cerca regola
-              <input id="ruleSearch" type="search" placeholder="Nome regola..." autocomplete="off">
-            </label>
-            <div>
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <label style="margin: 0; font-size: 0.82rem; font-weight: 600; color: var(--text-muted);" for="adAccountSelect">Account pubblicitario</label>
-                <button class="btn btn-ghost btn-xs" id="manageManualAccountsBtn" type="button" title="Gestisci e archivia account">⚙️ Gestisci</button>
+            <div class="status-mini-list">
+              <div class="status-mini-row">
+                <span>Post Programmati</span>
+                <strong id="tlStatUpcoming">0</strong>
               </div>
-              <select id="adAccountSelect"></select>
-              <div style="margin-top: 4px; display: flex; align-items: center; gap: 6px;">
-                <input type="checkbox" id="showHiddenManualAccountsToggle" style="width: auto; margin: 0;">
-                <label for="showHiddenManualAccountsToggle" style="font-size: 0.72rem; color: var(--text-dim); cursor: pointer; display: inline;">Mostra archiviati (<span id="hiddenAccountsCountManual">0</span>)</label>
+              <div class="status-mini-row">
+                <span>Inclusi nel Flow</span>
+                <strong class="text-neon" id="tlStatIncluded">0</strong>
               </div>
-            </div>
-            <label>
-              Campagna
-              <select id="campaignSelect"></select>
-            </label>
-            <label>
-              Gruppo inserzioni
-              <select id="adsetSelect"></select>
-            </label>
-            <label>
-              Regola esistente
-              <select id="ruleSelect"></select>
-            </label>
-            <label class="wide-field">
-              Schema nome inserzione
-              <input id="adNamePattern" type="text" value="ADV - {platform} - {post}" autocomplete="off">
-            </label>
-          </div>
-
-          <div class="destination-panel" id="destinationPanel"></div>
-        </div>
-
-        <!-- Step 2: Post Selection -->
-        <div class="step-card">
-          <div class="step-heading">
-            <div class="step-number">2</div>
-            <div>
-              <h3>Scegli i post da sponsorizzare</h3>
-              <p>Passa tra Facebook e Instagram, scegli la fonte e aggiungi i post alla coda.</p>
-            </div>
-          </div>
-
-          <div class="post-controls">
-            <div class="tabs" role="tablist" aria-label="Piattaforma post">
-              <button class="active" type="button" data-platform-tab="Facebook">Facebook</button>
-              <button type="button" data-platform-tab="Instagram">Instagram</button>
-            </div>
-            <label>
-              Fonte post
-              <select id="sourceSelect"></select>
-            </label>
-            <div class="source-note" id="sourceNote"></div>
-            <label class="search-field">
-              Cerca
-              <input id="searchInput" type="search" placeholder="Testo, ID o link..." autocomplete="off">
-            </label>
-            <button class="btn btn-secondary" id="selectVisibleBtn" type="button">Seleziona visibili</button>
-            <button class="btn btn-primary" id="queueSelectedBtn" type="button">Aggiungi alla coda</button>
-          </div>
-
-          <div class="mini-stats">
-            <span><strong id="metricAvailable">0</strong> disponibili</span>
-            <span><strong id="metricSelected">0</strong> selezionati</span>
-          </div>
-
-          <div class="post-library" id="postLibrary"></div>
-        </div>
-
-        <!-- Step 3: Queue & Create -->
-        <div class="step-card">
-          <div class="step-heading">
-            <div class="step-number">3</div>
-            <div>
-              <h3>Controlla la coda e crea</h3>
-              <p>Puoi rinominare ogni inserzione prima di crearla e decidere se pubblicarla attiva o in pausa.</p>
-            </div>
-            <button class="btn btn-ghost btn-sm" id="clearQueueBtn" type="button">Svuota coda</button>
-          </div>
-
-          <div class="queue-list" id="queueList"></div>
-
-          <div class="final-actions">
-            <button class="btn btn-secondary" id="renameQueueBtn" type="button">Aggiorna nomi in coda</button>
-            <label class="toggle-row">
-              <input id="activeStatusCheckbox" type="checkbox">
-              <span>Crea inserzione attiva</span>
-            </label>
-            <button class="btn btn-primary" id="createAdsBtnBottom" type="button">Crea inserzioni in pausa</button>
-          </div>
-        </div>
-
-        <!-- Results Card -->
-        <div class="step-card result-card" id="resultCard" hidden>
-          <div class="step-heading">
-            <div class="step-number">✓</div>
-            <div>
-              <h3>Risultato creazione inserzioni</h3>
-              <p>Riepilogo delle inserzioni create su Meta e stato delle regole automatiche.</p>
-            </div>
-          </div>
-          <div class="result-list" id="resultList"></div>
-        </div>
-      </section>
-
-      <!-- ============================================================== -->
-      <!-- VIEW 3: STORICO E LOG                                         -->
-      <!-- ============================================================== -->
-      <section class="app-view" id="logsView" role="tabpanel" aria-labelledby="tabBtnLogs" hidden>
-        <div class="view-header-strip">
-          <div>
-            <h2>Storico Controlli & Inserzioni Create</h2>
-            <p>Traccia dettagliata di ogni controllo periodico, dei post individuati e delle inserzioni create.</p>
-          </div>
-          <button class="btn btn-secondary" id="refreshLogsBtn" type="button">🔄 Aggiorna Log</button>
-        </div>
-
-        <div class="two-col-grid">
-          <!-- Execution Runs Log -->
-          <div class="panel">
-            <div class="panel-header">
-              <h3>Esecuzioni del Bot</h3>
-              <span class="sub-badge" id="logsCountBadge">0 esecuzioni</span>
-            </div>
-            <div class="table-container">
-              <table class="data-table" id="runsTable">
-                <thead>
-                  <tr>
-                    <th>Data / Ora</th>
-                    <th>Automazione</th>
-                    <th>Trigger</th>
-                    <th>Trovati</th>
-                    <th>Creati</th>
-                    <th>Errori</th>
-                  </tr>
-                </thead>
-                <tbody id="runsTableBody">
-                  <tr><td colspan="6" class="text-muted text-center py-4">Nessun log presente</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- Processed Posts Log -->
-          <div class="panel">
-            <div class="panel-header">
-              <h3>Post Sponsorizzati</h3>
-              <span class="sub-badge" id="postsCountBadge">0 post memorizzati</span>
-            </div>
-            <div class="table-container">
-              <table class="data-table" id="postsTable">
-                <thead>
-                  <tr>
-                    <th>Data</th>
-                    <th>Account Ads / Canale</th>
-                    <th>Piattaforma</th>
-                    <th>Nome Inserzione / Post</th>
-                    <th>Ad ID</th>
-                    <th>Stato</th>
-                  </tr>
-                </thead>
-                <tbody id="postsTableBody">
-                  <tr><td colspan="6" class="text-muted text-center py-4">Nessun post sponsorizzato ancora</td></tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- ============================================================== -->
-      <!-- VIEW 4: GUIDA SETUP RENDER & STATO                             -->
-      <!-- ============================================================== -->
-      <section class="app-view" id="guideView" role="tabpanel" aria-labelledby="tabBtnGuide" hidden>
-        <div class="view-header-strip">
-          <div>
-            <h2>Configurazione Render.com & Meta Health</h2>
-            <p>Istruzioni passo-passo per rendere l'automazione autonoma su Render Free senza spendere nulla.</p>
-          </div>
-          <button class="btn btn-secondary" id="checkMetaHealthBtn" type="button">🩺 Verifica Connessione Meta</button>
-        </div>
-
-        <div class="guide-cards-grid">
-          <!-- Meta Token Diagnostic Card -->
-          <div class="guide-card">
-            <div class="guide-card-icon">🔑</div>
-            <h3>Stato Token Meta</h3>
-            <p>Verifica se il token Meta configurato ha i permessi necessari ed è attivo.</p>
-            <div class="token-diagnostic-box" id="tokenDiagnosticBox">
-              <div class="diag-item">
-                <span>Stato Token:</span>
-                <strong id="diagTokenStatus">In verifica...</strong>
+              <div class="status-mini-row">
+                <span>Esclusi dal Flow</span>
+                <strong id="tlStatExcluded">0</strong>
               </div>
-              <div class="diag-item">
-                <span>Account Collegato:</span>
-                <strong id="diagTokenUser">-</strong>
+              <div class="status-mini-row">
+                <span>Gia Sponsorizzati</span>
+                <strong id="tlStatSponsored">0</strong>
               </div>
-              <div class="diag-item">
-                <span>Tipo Database:</span>
-                <strong id="diagDbType">-</strong>
-              </div>
-              <a href="/auth/facebook" class="btn btn-primary" id="loginFbBtn" style="margin-top: 10px; text-decoration: none; width: 100%; text-align: center;">
-                🔵 Accedi con Facebook (Login Rapido)
-              </a>
-              <div style="margin-top: 12px; border-top: 1px solid var(--border-subtle); padding-top: 12px;">
-                <span style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; font-weight: 700; display: block; margin-bottom: 6px;">Oppure incolla Token manualmente:</span>
-                <div style="display: flex; gap: 8px;">
-                  <input type="password" id="manualTokenInput" placeholder="Incolla token EAA..." autocomplete="off">
-                  <button class="btn btn-secondary btn-sm" id="saveManualTokenBtn" type="button">Salva</button>
-                </div>
+              <div class="status-mini-row" hidden>
+                <span>Altri Social</span>
+                <strong id="tlStatExternal">0</strong>
               </div>
             </div>
           </div>
-
-          <!-- External Cron Setup Card -->
-          <div class="guide-card">
-            <div class="guide-card-icon">⏰</div>
-            <h3>Schedulazione Gratuita (Render Free)</h3>
-            <p>Poiché Render Free va in sleep dopo 15 minuti, usa un servizio gratuito come <strong>cron-job.org</strong> o <strong>GitHub Actions</strong> per risvegliare l'app ed eseguire il controllo.</p>
-            
-            <div class="code-box">
-              <div class="code-header">
-                <span>URL Webhook Cron</span>
-                <button class="btn-copy" id="copyCronUrlBtn" type="button">Copia URL</button>
-              </div>
-              <code id="cronWebhookUrl">https://&lt;tua-app&gt;.onrender.com/api/cron/check-and-sponsor</code>
-            </div>
-
-            <div class="code-box">
-              <div class="code-header">
-                <span>Header di Autorizzazione</span>
-                <button class="btn-copy" id="copyCronHeaderBtn" type="button">Copia Header</button>
-              </div>
-              <code id="cronAuthHeader">Authorization: Bearer &lt;CRON_SECRET&gt;</code>
-            </div>
-
-            <div class="tip-box">
-              💡 <strong>Consiglio:</strong> Imposta il cron su <em>cron-job.org</em> ogni 12 ore (es. alle 09:00 e alle 21:00). Risveglierà Render, sponsorizzerà i nuovi contenuti e tornerà a riposare a costo zero.
-            </div>
-          </div>
-
-          <!-- Database Neon Setup Card -->
-          <div class="guide-card">
-            <div class="guide-card-icon">🗄️</div>
-            <h3>Database Persistente Cloud</h3>
-            <p>Il disco di Render Free è effimero. Per non perdere lo storico e le regole tra un riavvio e l'altro:</p>
-            <ol class="guide-steps">
-              <li>Crea un database gratuito su <strong>Neon.tech</strong> o <strong>Supabase</strong> (PostgreSQL).</li>
-              <li>Copia la stringa di connessione (es. <code>postgresql://...</code>).</li>
-              <li>Aggiungi la variabile d'ambiente <code>DATABASE_URL</code> nel pannello Render.</li>
-              <li>L'applicazione configurerà automaticamente tutte le tabelle al primo avvio!</li>
-            </ol>
-          </div>
-
-          <!-- Sicurezza e Master Password Card -->
-          <div class="guide-card">
-            <div class="guide-card-icon">🔐</div>
-            <h3>Sicurezza & Master Password</h3>
-            <p>I tuoi account e clienti Meta sono rigorosamente protetti da Master Password:</p>
-            <ul class="guide-steps" style="list-style: disc; padding-left: 20px;">
-              <li>All'apertura da qualsiasi browser o computer, il pannello richiede la Master Password prima di mostrare gli account.</li>
-              <li>Puoi definire la variabile <code>APP_PASSWORD</code> nelle impostazioni di Render per forzarla da ambiente.</li>
-              <li>Usa il pulsante <strong>🔒 Esci</strong> in alto a destra quando ti allontani da un computer condiviso per bloccare subito la sessione.</li>
-            </ul>
-          </div>
         </div>
-      </section>
-    </main>
+      </aside>
+    </div>
 
     <!-- ============================================================== -->
     <!-- MODAL: CREA / MODIFICA AUTOMAZIONE                             -->
     <!-- ============================================================== -->
-    <dialog class="app-dialog" id="automationModal">
-      <form id="automationForm" method="dialog">
-        <div class="dialog-header">
-          <h2 id="modalTitle">Nuova Regola di Automazione</h2>
-          <button class="icon-button" id="closeModalBtn" value="cancel" type="button" aria-label="Chiudi">✕</button>
+    <div class="modal-backdrop" id="automationModal" hidden>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-header">
+          <div>
+            <span class="badge-pill">CONFIGURAZIONE REGOLA</span>
+            <h3 id="modalTitle">Nuova Regola di Automazione</h3>
+          </div>
+          <button class="modal-close" id="closeAutoModalBtn" type="button">X</button>
         </div>
 
-        <div class="dialog-body">
-          <input type="hidden" id="autoFormId">
+        <form id="automationForm" class="modal-body">
+          <input type="hidden" id="autoId">
 
-          <!-- 1. General Info -->
           <div class="form-group">
-            <label for="autoNameInput">Nome Regola <span class="required">*</span></label>
-            <input id="autoNameInput" type="text" placeholder="Es. Auto Sponsor - Reel Instagram Azienda" required autocomplete="off">
+            <label for="autoName">Nome Regola / Cliente <span class="req">*</span></label>
+            <input id="autoName" type="text" required placeholder="Es: Ristorante Rossi - Instagram Promo">
           </div>
 
-          <!-- 2. Platform & Source -->
-          <div class="form-row">
+          <div class="form-section-divider">
+            <span>1. Sorgente dei Post da Monitorare (Solo Formato POST)</span>
+          </div>
+
+          <div class="form-row-2">
             <div class="form-group">
-              <label>Piattaforma <span class="required">*</span></label>
-              <div class="platform-toggle-group">
-                <button class="platform-btn active" id="btnPlatformFB" type="button" data-platform="Facebook">
-                  <span class="icon">📘</span> Facebook
-                </button>
-                <button class="platform-btn" id="btnPlatformIG" type="button" data-platform="Instagram">
-                  <span class="icon">📸</span> Instagram
-                </button>
-              </div>
+              <label for="autoAdAccount">Account Pubblicitario Meta <span class="req">*</span></label>
+              <select id="autoAdAccount" required></select>
             </div>
 
             <div class="form-group">
-              <label for="autoSourceSelect">Fonte Post/Reel <span class="required">*</span></label>
-              <select id="autoSourceSelect" required>
-                <option value="">Caricamento fonti...</option>
+              <label for="autoPlatform">Piattaforma da Monitorare <span class="req">*</span></label>
+              <select id="autoPlatform" required>
+                <option value="Facebook">Pagina Facebook (POST)</option>
+                <option value="Instagram">Profilo Instagram (POST)</option>
               </select>
             </div>
           </div>
 
-          <!-- 3. Target Destination -->
-          <div class="form-row three-cols">
-            <div class="form-group">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                <label for="autoAdAccountSelect" style="margin: 0;">Account Ads <span class="required">*</span></label>
-                <button class="btn btn-ghost btn-xs" id="manageModalAccountsBtn" type="button" title="Gestisci e archivia account">⚙️ Gestisci</button>
-              </div>
-              <select id="autoAdAccountSelect" required></select>
-            </div>
-            <div class="form-group">
-              <label for="autoCampaignSelect">Campagna Target <span class="required">*</span></label>
-              <select id="autoCampaignSelect" required></select>
-            </div>
-            <div class="form-group">
-              <label for="autoAdsetSelect">Gruppo Inserzioni (Ad Set) <span class="required">*</span></label>
-              <select id="autoAdsetSelect" required></select>
-            </div>
-          </div>
-
-          <!-- Dynamic CTA & URL Container (visible only when Campaign requires CTA) -->
-          <div id="autoCtaContainer" style="display: none; margin-top: 6px; margin-bottom: 16px; padding: 12px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-md);">
-            <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: var(--accent-blue); margin-bottom: 10px;">
-              <span>🎯</span> Questa campagna richiede un link di destinazione obbligatorio (CTA)
-            </div>
-            <div class="form-row" style="margin-bottom: 0;">
-              <div class="form-group" style="flex: 2; margin-bottom: 0;">
-                <label for="autoCtaLink">URL di destinazione <span class="required">*</span></label>
-                <input id="autoCtaLink" type="url" placeholder="https://www.tuosito.it/promozione" autocomplete="off">
-                <small class="help-text">Sito web o landing page dove atterreranno gli utenti dopo il click.</small>
-              </div>
-              <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                <label for="autoCtaType">Pulsante CTA</label>
-                <select id="autoCtaType">
-                  <option value="LEARN_MORE" selected>Scopri di più</option>
-                  <option value="SHOP_NOW">Acquista ora</option>
-                  <option value="SIGN_UP">Iscriviti</option>
-                  <option value="CONTACT_US">Contattaci</option>
-                  <option value="BOOK_NOW">Prenota subito</option>
-                  <option value="APPLY_NOW">Richiedi ora</option>
-                  <option value="DOWNLOAD">Scarica</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <!-- 4. Start Time Protection & AdSet 50-limit Strategy -->
-          <div class="form-row">
-            <div class="form-group">
-              <label for="autoStartTimeInput">Inizia a monitorare da (Data e Ora) <span class="required">*</span></label>
-              <input id="autoStartTimeInput" type="datetime-local" required>
-              <small class="help-text">🛡️ <strong>Zero retroattività:</strong> I post pubblicati prima di questa data verranno ignorati.</small>
-            </div>
-
-            <div class="form-group">
-              <label for="autoAdsetStrategySelect">Se il Gruppo Inserzioni è pieno (limite 50 ads) <span class="required">*</span></label>
-              <select id="autoAdsetStrategySelect">
-                <option value="ROTATE_OLDEST" selected>🔄 Rotazione: Archivia la più vecchia (Consigliato)</option>
-                <option value="CREATE_NEW_ADSET">📋 Crea nuovo Adset da pre-esistente</option>
-                <option value="STOP_AND_ALERT">⏸️ Blocca creazione e segnala avviso</option>
-              </select>
-              <small class="help-text">Supera in automatico il limite Meta di 50 ads per AdSet.</small>
-            </div>
-          </div>
-
-          <!-- Opzioni per Duplicazione AdSet da pre-esistente -->
-          <div class="clone-adset-box" id="cloneAdsetBox" style="display: none;">
-            <div class="clone-adset-box-header">
-              <span>📋 Duplicazione AdSet da Pre-Esistente</span>
-            </div>
-            <div class="form-row">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label for="autoAdsetCloneSourceSelect">Gruppo da duplicare (Sorgente) <span class="required">*</span></label>
-                <select id="autoAdsetCloneSourceSelect">
-                  <option value="">Usa lo stesso gruppo iniziale</option>
-                </select>
-                <small class="help-text">Vengono ereditati posizionamento, budget, targeting e ottimizzazione. Il nuovo AdSet è sempre <strong>ATTIVO</strong>.</small>
-              </div>
-              <div class="form-group" style="margin-bottom: 0;">
-                <label for="autoAdsetCloneNameInput">Nome nuovo gruppo (se si vuole personalizzare)</label>
-                <input id="autoAdsetCloneNameInput" type="text" placeholder="Es. NOME GRUPPO - Data - Copia" autocomplete="off">
-                <small class="help-text">Se vuoto: <code>NOME GRUPPO INSERZIONE - Data - Copia</code></small>
-              </div>
-            </div>
-          </div>
-
-          <!-- Source Posts Preview Box -->
-          <div class="source-preview-container" id="sourcePreviewContainer" hidden>
-            <div class="source-preview-header">
-              <span>📦 Post già pubblicati sulla fonte (NON verranno sponsorizzati):</span>
-              <span class="sub-badge" id="sourcePreviewBadge">0 contenuti</span>
-            </div>
-            <div class="source-preview-cards" id="sourcePreviewCards"></div>
-          </div>
-
-          <!-- 5. Rule & Parameters -->
-          <div class="form-row three-cols">
-            <div class="form-group">
-              <label for="autoRuleSelect">Regola Automatica Meta (Opzionale)</label>
-              <select id="autoRuleSelect">
-                <option value="">Nessuna regola collegata</option>
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="autoIntervalInput">Frequenza Controllo (in ore) <span class="required">*</span></label>
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <input id="autoIntervalInput" type="number" min="1" max="168" value="3" required style="width: 100px;">
-                <span style="color: var(--text-muted); font-size: 0.88rem;">ore</span>
-              </div>
-              <div class="tag-pills" style="margin-top: 6px;">
-                <button class="pill" type="button" data-hours="1">1h</button>
-                <button class="pill" type="button" data-hours="2">2h</button>
-                <button class="pill" type="button" data-hours="3">3h</button>
-                <button class="pill" type="button" data-hours="6">6h</button>
-                <button class="pill" type="button" data-hours="12">12h</button>
-                <button class="pill" type="button" data-hours="24">24h</button>
-              </div>
-              <small class="help-text">Inserisci qualsiasi valore in ore (es. 3).</small>
-            </div>
-
-            <div class="form-group">
-              <label for="autoAdStatusSelect">Stato Inserzione Iniziale</label>
-              <select id="autoAdStatusSelect">
-                <option value="PAUSED" selected>In Pausa (Revisione)</option>
-                <option value="ACTIVE">Attiva Subito</option>
-              </select>
-            </div>
-          </div>
-
-          <!-- 6. Naming Pattern with Live Preview -->
           <div class="form-group">
-            <label for="autoNamingPattern">Schema Nome Inserzione</label>
-            <input id="autoNamingPattern" type="text" value="ADV - {platform} - {post}" autocomplete="off">
-            <div class="tag-pills">
-              <span>Token disponibili:</span>
-              <button class="pill" type="button" data-tag="{platform}">{platform}</button>
-              <button class="pill" type="button" data-tag="{post}">{post}</button>
-              <button class="pill" type="button" data-tag="{date}">{date}</button>
-              <button class="pill" type="button" data-tag="{id}">{id}</button>
+            <label for="autoSource">Seleziona Pagina Facebook o Account Instagram <span class="req">*</span></label>
+            <select id="autoSource" required></select>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="autoKeywords">Inclusione: Hashtag o Parole Chiave (Opzionale)</label>
+              <input id="autoKeywords" type="text" placeholder="Es: #adv, #sponsor (vuoto = tutti i nuovi post)">
+              <small class="form-hint">Se compilato, sponsorizza solo i post che contengono almeno una di queste parole.</small>
             </div>
 
-            <div class="live-preview-box" id="liveAdNamePreviewBox">
-              <span class="live-preview-label">Anteprima Nome Reale:</span>
-              <strong id="liveAdNamePreview">ADV - FB - Esempio titolo del post...</strong>
+            <div class="form-group">
+              <label for="autoExcludeKeywords">Esclusione: Non sponsorizzare se contiene (Opzionale)</label>
+              <input id="autoExcludeKeywords" type="text" placeholder="Es: #nosponsor, #organico, avviso">
+              <small class="form-hint">Se un post contiene una di queste parole o hashtag, verra saltato.</small>
             </div>
           </div>
 
-          <!-- 7. Filter Keywords (Inclusion / Exclusion) -->
-          <div class="form-row">
+          <div class="form-section-divider">
+            <span>2. Destinazione su Meta Ads</span>
+          </div>
+
+          <div class="form-row-2">
             <div class="form-group">
-              <label for="autoFilterKeywords">Filtro Inclusione (Solo con...)</label>
-              <input id="autoFilterKeywords" type="text" placeholder="Es. #sponsor, #promo, offerta" autocomplete="off">
-              <small class="help-text">Sponsorizza <strong>solo</strong> se contiene almeno una parola/hashtag (vuoto = tutti i post).</small>
+              <label for="autoCampaign">Campagna Meta <span class="req">*</span></label>
+              <select id="autoCampaign" required></select>
             </div>
+
             <div class="form-group">
-              <label for="autoExcludeKeywords">Filtro Esclusione (Non sponsorizzare se...)</label>
-              <input id="autoExcludeKeywords" type="text" placeholder="Es. #nosponsor, #organico, noadv" autocomplete="off">
-              <small class="help-text"><strong>Esclude</strong> e non sponsorizza i post contenenti questi hashtag o parole.</small>
+              <label for="autoAdset">Gruppo di Inserzioni (AdSet) <span class="req">*</span></label>
+              <select id="autoAdset" required></select>
             </div>
           </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="autoAdsetFullStrategy">Se il Gruppo Inserzioni raggiunge 50/50 Ads</label>
+              <select id="autoAdsetFullStrategy">
+                <option value="ROTATE_OLDEST" selected>Archivia l'inserzione piu vecchia e inserisci la nuova</option>
+                <option value="CLONE_EXISTING_ADSET">Duplica da un Gruppo Inserzioni modello e continua</option>
+                <option value="CREATE_NEW_ADSET">Duplica il Gruppo Inserzioni corrente e continua</option>
+                <option value="STOP_AND_ALERT">Ferma e segnala avviso nel log</option>
+              </select>
+              <small class="form-hint">Meta consente massimo 50 inserzioni per ogni Gruppo di Inserzioni.</small>
+            </div>
+
+            <div class="form-group">
+              <label for="autoRule">Regola Automatica Meta (Opzionale)</label>
+              <select id="autoRule">
+                <option value="">Nessuna regola automatica</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Extra options when cloning/creating a new AdSet on 50-ads limit -->
+          <div class="form-row-2" id="autoCloneOptionsRow" style="display: none; background: rgba(0, 255, 102, 0.05); padding: 12px; border-radius: 6px; border: 1px solid rgba(0, 255, 102, 0.25);">
+            <div class="form-group">
+              <label for="autoCloneSourceAdset">Gruppo Inserzioni Modello da Duplicare</label>
+              <select id="autoCloneSourceAdset">
+                <option value="">Usa lo stesso Gruppo Inserzioni selezionato sopra</option>
+              </select>
+              <small class="form-hint">Scegli quale AdSet della campagna copiare (budget, target, posizionamenti).</small>
+            </div>
+
+            <div class="form-group">
+              <label for="autoCloneNamePattern">Nome del Nuovo Gruppo Inserzioni</label>
+              <input id="autoCloneNamePattern" type="text" value="{adset} - Auto {date}" placeholder="Es: {adset} - Auto {date}">
+              <small class="form-hint">Variabili: <code>{adset}</code> (nome originale), <code>{date}</code> (data creazione). Creato sempre ATTIVO.</small>
+            </div>
+          </div>
+
+          <div class="form-section-divider">
+            <span>3. Pianificazione e Parametri Inserzione</span>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="autoInterval">Controlla Nuovi Post Ogni</label>
+              <select id="autoInterval">
+                <option value="0.25">Ogni 15 Minuti</option>
+                <option value="0.5">Ogni 30 Minuti</option>
+                <option value="1">Ogni Ora</option>
+                <option value="3">Ogni 3 Ore</option>
+                <option value="6">Ogni 6 Ore</option>
+                <option value="12" selected>Ogni 12 Ore (2 volte al giorno)</option>
+                <option value="24">Ogni 24 Ore (1 volta al giorno)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="autoStartTime">Sponsorizza solo post pubblicati a partire da:</label>
+              <input id="autoStartTime" type="datetime-local">
+              <small class="form-hint">Protezione Non-Retroattiva: i post pubblicati prima di questa data verranno ignorati.</small>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="autoAdStatus">Stato Inserzione alla Creazione</label>
+              <select id="autoAdStatus">
+                <option value="ACTIVE" selected>Attiva Subito (ACTIVE)</option>
+                <option value="PAUSED">In Pausa (PAUSED)</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="autoNamePattern">Formato Nome Inserzione</label>
+              <input id="autoNamePattern" type="text" value="ADV - {platform} - {post}" placeholder="ADV - {platform} - {post}">
+              <small class="form-hint">Variabili: <code>{platform}</code>, <code>{post}</code>, <code>{date}</code>, <code>{id}</code></small>
+            </div>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="autoCtaLink">URL di Destinazione / Link CTA (Per Campagne Traffico)</label>
+              <input id="autoCtaLink" type="url" placeholder="Es: https://www.tuosito.it (Opzionale)">
+              <small class="form-hint">Obbligatorio se la campagna ha obiettivo Traffico / Click sul link (evita errore Meta #1443128).</small>
+            </div>
+
+            <div class="form-group">
+              <label for="autoCtaType">Pulsante Call To Action (CTA)</label>
+              <select id="autoCtaType">
+                <option value="LEARN_MORE" selected>Scopri di piu (LEARN_MORE)</option>
+                <option value="SHOP_NOW">Acquista ora (SHOP_NOW)</option>
+                <option value="BOOK_TRAVEL">Prenota ora (BOOK_TRAVEL)</option>
+                <option value="CONTACT_US">Contattaci (CONTACT_US)</option>
+                <option value="SIGN_UP">Iscriviti (SIGN_UP)</option>
+                <option value="WATCH_MORE">Guarda di piu (WATCH_MORE)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group checkbox-group">
+            <label class="switch-label">
+              <input type="checkbox" id="autoEnabled" checked>
+              <span>Regola Attiva (avvia il monitoraggio automatico)</span>
+            </label>
+          </div>
+
+          <div class="modal-footer">
+            <button class="btn btn-ghost" id="cancelAutoModalBtn" type="button">Annulla</button>
+            <button class="btn btn-primary" id="saveAutoBtn" type="submit">
+              <span class="spinner" id="saveAutoSpinner" hidden></span>
+              <span>Salva Regola di Automazione</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL: CONFIGURAZIONE PUBBLIE & MAPPATURA CANALI               -->
+    <!-- ============================================================== -->
+    <div class="modal-backdrop" id="pubblieModal" hidden>
+      <div class="modal-dialog modal-lg" role="dialog" aria-modal="true" aria-labelledby="pubblieModalTitle">
+        <div class="modal-header">
+          <div>
+            <span class="badge-pill">INTEGRAZIONE PUBBLIE &rarr; META ADS</span>
+            <h3 id="pubblieModalTitle">Configurazione Pubblie e Mappatura Canali</h3>
+          </div>
+          <button class="modal-close" id="closePubblieModalBtn" type="button">X</button>
         </div>
 
-        <div class="dialog-actions">
-          <button class="btn btn-ghost" id="cancelModalBtn" type="button">Annulla</button>
-          <button class="btn btn-secondary" id="duplicateFromModalBtn" type="button" style="display: none;">📋 Duplica come Nuova</button>
-          <button class="btn btn-primary" id="saveAutomationBtn" type="submit">Salva Regola</button>
-        </div>
-      </form>
-    </dialog>
+        <div class="modal-body">
+          <!-- Step 1: API Key -->
+          <div class="form-section-divider" style="margin-top: 0;">
+            <span>1. Chiave API Pubblie (Bearer Token)</span>
+          </div>
+          <div class="form-row-2" style="align-items: flex-end;">
+            <div class="form-group" style="grid-column: 1 / -1;">
+              <label for="pubblieApiKeyInput">Inserisci la tua API Key di Pubblie</label>
+              <div class="copy-input-group">
+                <input id="pubblieApiKeyInput" type="password" placeholder="pb_live_xxxxxxxxxxxxxxxxxxxxxxxx...">
+                <button class="btn btn-primary btn-sm" id="savePubblieKeyBtn" type="button">Salva e Connetti</button>
+              </div>
+              <small class="form-hint">La chiave viene salvata nel database persistente e permette di leggere il calendario editoriale di Pubblie.</small>
+            </div>
+          </div>
 
-    <!-- Run Report Dialog -->
-    <dialog class="app-dialog" id="runReportDialog">
-      <form method="dialog">
-        <div class="dialog-header">
-          <h2 id="reportTitle">Esito Esecuzione</h2>
-          <button class="icon-button" value="close" type="submit" aria-label="Chiudi">✕</button>
-        </div>
-        <div class="dialog-body" id="reportContent">
-          <!-- Dynamic report inserted -->
-        </div>
-        <div class="dialog-actions">
-          <button class="btn btn-primary" value="close" type="submit">Chiudi</button>
-        </div>
-      </form>
-    </dialog>
-
-    <!-- Export Dialog -->
-    <dialog class="app-dialog" id="exportDialog">
-      <form method="dialog">
-        <div class="dialog-header">
-          <h2>Dati Batch Esportati</h2>
-          <button class="icon-button" value="close" type="submit" aria-label="Chiudi">✕</button>
-        </div>
-        <div class="dialog-body">
-          <textarea id="exportOutput" rows="14" readonly class="code-textarea"></textarea>
-        </div>
-        <div class="dialog-actions">
-          <button class="btn btn-secondary" id="copyExportBtn" type="button">Copia Dati</button>
-          <button class="btn btn-primary" value="close" type="submit">Fine</button>
-        </div>
-      </form>
-    </dialog>
-
-    <!-- Manage & Archive Accounts Dialog -->
-    <dialog class="app-dialog" id="manageAccountsDialog" style="max-width: 620px;">
-      <form method="dialog">
-        <div class="dialog-header">
-          <h2>Gestione Account Pubblicitari</h2>
-          <button class="icon-button" id="closeManageAccountsBtn" value="close" type="button" aria-label="Chiudi">✕</button>
-        </div>
-        <div class="dialog-body">
-          <p style="color: var(--text-dim); font-size: 0.85rem; margin-top: 0; line-height: 1.4;">
-            Archivia o nascondi gli account Meta che non utilizzi per non vederli nei menu a tendina. Puoi ripristinarli in qualsiasi momento.
+          <!-- Step 2: Channel Mapping -->
+          <div class="form-section-divider">
+            <span>2. Collega un Canale Pubblie (Facebook o Instagram) a una Destinazione Meta Ads</span>
+          </div>
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 12px 0;">
+            Associa un Progetto e Canale di Pubblie al rispettivo Account Pubblicitario, Campagna e Gruppo Inserzioni su Meta Ads.
           </p>
-          <div class="form-group" style="margin-bottom: 12px;">
-            <input id="manageAccountsSearch" type="search" placeholder="Cerca account per nome o ID..." autocomplete="off">
-          </div>
-          <div id="manageAccountsList" style="max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-        <div class="dialog-actions" style="justify-content: space-between;">
-          <button class="btn btn-ghost" id="restoreAllAccountsBtn" type="button">Ripristina Tutti</button>
-          <button class="btn btn-primary" id="saveManagedAccountsBtn" type="button">Salva Modifiche</button>
-        </div>
-      </form>
-    </dialog>
 
-    <!-- Manage & Archive Pubblie Projects Dialog -->
-    <dialog class="app-dialog" id="managePubblieProjectsDialog" style="max-width: 640px;">
-      <form method="dialog">
-        <div class="dialog-header">
+          <form id="pubblieMappingForm" class="mapping-form-box">
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="mapPubblieProject">Progetto Pubblie <span class="req">*</span></label>
+                <select id="mapPubblieProject" required>
+                  <option value="">Carica prima l'API Key...</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="mapPubblieChannel">Canale Social nel Progetto <span class="req">*</span></label>
+                <select id="mapPubblieChannel" required>
+                  <option value="">Seleziona prima un progetto...</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="mapMetaAdAccount">Account Pubblicitario Meta <span class="req">*</span></label>
+                <select id="mapMetaAdAccount" required></select>
+              </div>
+              <div class="form-group">
+                <label for="mapMetaCampaign">Campagna Meta <span class="req">*</span></label>
+                <select id="mapMetaCampaign" required></select>
+              </div>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="mapMetaAdset">Gruppo di Inserzioni (AdSet) <span class="req">*</span></label>
+                <select id="mapMetaAdset" required></select>
+              </div>
+              <div class="form-group">
+                <label for="mapMetaAutomation">Collega a Regola di Automazione Esistente (Opzionale)</label>
+                <select id="mapMetaAutomation">
+                  <option value="">Nessuna (solo mappatura Timeline)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-row-2">
+              <div class="form-group">
+                <label for="mapCtaLink">URL di Destinazione / Link Sito Web (Per Campagne Traffico / Link Click)</label>
+                <input id="mapCtaLink" type="url" placeholder="Es: https://www.tuosito.it (Opzionale ma richiesto per campagne con link)">
+                <small class="form-hint">Se la tua campagna Meta richiede un pulsante di destinazione (CTA), inserisci qui il link.</small>
+              </div>
+              <div class="form-group">
+                <label for="mapCtaType">Tipo Pulsante Call To Action (CTA)</label>
+                <select id="mapCtaType">
+                  <option value="LEARN_MORE" selected>Scopri di piu (LEARN_MORE)</option>
+                  <option value="SHOP_NOW">Acquista ora (SHOP_NOW)</option>
+                  <option value="BOOK_TRAVEL">Prenota ora (BOOK_TRAVEL)</option>
+                  <option value="CONTACT_US">Contattaci (CONTACT_US)</option>
+                  <option value="SIGN_UP">Iscriviti (SIGN_UP)</option>
+                  <option value="WATCH_MORE">Guarda di piu (WATCH_MORE)</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+              <label class="switch-label">
+                <input type="checkbox" id="mapAutoSponsor" checked>
+                <span>Includi di default i nuovi post di questo canale nel Flow di sponsorizzazione</span>
+              </label>
+              <button class="btn btn-primary btn-sm" type="submit">+ Salva Mappatura Canale</button>
+            </div>
+          </form>
+
+          <!-- Step 3: Active Mappings List -->
+          <div class="form-section-divider">
+            <span>3. Mappature Canali Attive</span>
+          </div>
+          <div class="table-container" style="max-height: 240px; overflow-y: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Progetto / Canale Pubblie</th>
+                  <th>Account / Campagna Meta</th>
+                  <th>Gruppo Inserzioni</th>
+                  <th>Default Flow</th>
+                  <th>Azioni</th>
+                </tr>
+              </thead>
+              <tbody id="pubblieMappingsTableBody">
+                <tr><td colspan="5" style="text-align:center; color: var(--text-muted);">Nessuna mappatura configurata.</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Step 4: Visibilita Progetti nella Timeline -->
+          <div class="form-section-divider">
+            <span>4. Visibilita Progetti nella Timeline (Nascondi Progetti Inattivi)</span>
+          </div>
+          <p style="font-size: 0.84rem; color: var(--text-secondary); margin: 0 0 10px 0;">
+            Disattiva i progetti conclusi o di test che non vuoi visualizzare nella Timeline Flow.
+          </p>
+          <div class="table-container" style="max-height: 220px; overflow-y: auto;">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Progetto Pubblie</th>
+                  <th>Team</th>
+                  <th>Stato nella Timeline</th>
+                  <th>Azione</th>
+                </tr>
+              </thead>
+              <tbody id="pubblieProjectsVisibilityBody">
+                <tr><td colspan="4" style="text-align:center; color: var(--text-muted);">Caricamento progetti...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-secondary" id="donePubblieModalBtn" type="button">Chiudi</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ============================================================== -->
+    <!-- MODAL: CAMBIA DESTINAZIONE META ADS PER SINGOLO POST           -->
+    <!-- ============================================================== -->
+    <div class="modal-backdrop" id="postTargetModal" hidden>
+      <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="postTargetModalTitle" style="max-width: 600px;">
+        <div class="modal-header">
           <div>
-            <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
-              <span>📁</span> Gestione Progetti Pubblie
-            </h2>
-            <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--text-dim);">
-              Archivia i progetti che non usi per non vederli nella Timeline Flow e nei menu di associazione. Puoi ripristinarli quando vuoi.
-            </p>
+            <span class="badge-pill">DESTINAZIONE PERSONALIZZATA</span>
+            <h3 id="postTargetModalTitle">Scegli Campagna e Gruppo Inserzioni per questo Post</h3>
           </div>
-          <button class="icon-button" id="closeManagePubblieProjectsBtn" value="close" type="button" aria-label="Chiudi">✕</button>
-        </div>
-        <div class="dialog-body">
-          <div class="form-group" style="margin-bottom: 12px;">
-            <input id="managePubblieProjectsSearch" type="search" placeholder="Cerca progetto per nome o team..." autocomplete="off">
-          </div>
-          <div id="managePubblieProjectsList" style="max-height: 340px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;">
-            <!-- Dynamically populated -->
-          </div>
-        </div>
-        <div class="dialog-actions" style="justify-content: space-between;">
-          <button class="btn btn-ghost" id="restoreAllPubblieProjectsBtn" type="button">Ripristina Tutti</button>
-          <div style="display: flex; gap: 8px;">
-            <button class="btn btn-secondary" id="cancelManagePubblieProjectsBtn" type="button">Annulla</button>
-            <button class="btn btn-primary" id="saveManagedPubblieProjectsBtn" type="button">Salva Modifiche</button>
-          </div>
-        </div>
-      </form>
-    </dialog>
-
-    <!-- Pubblie & Meta Mapping Configuration Dialog -->
-    <dialog class="app-dialog" id="pubblieConfigDialog" style="max-width: 860px;">
-      <form id="pubblieConfigForm" method="dialog">
-        <div class="dialog-header">
-          <div>
-            <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
-              <span>🔮</span> Pubblie.io & Mappatura Parametri Meta
-            </h2>
-            <p style="margin: 4px 0 0 0; font-size: 0.85rem; color: var(--text-dim);">
-              Collega la tua API Key di Pubblie e associa i parametri Meta (Account, Campagna, AdSet). <strong>Configurazione una tantum</strong>.
-            </p>
-          </div>
-          <button class="icon-button" id="closePubblieConfigBtn" value="close" type="button" aria-label="Chiudi">✕</button>
+          <button class="modal-close" id="closePostTargetModalBtn" type="button">X</button>
         </div>
 
-        <!-- Sub Tabs in Modal -->
-        <div class="modal-subtabs">
-          <button type="button" class="modal-subtab active" id="subtabBtnPubblieKey" data-subtab="pubblieKeySection">
-            <span>🔑 1. Connessione API Pubblie</span>
-          </button>
-          <button type="button" class="modal-subtab" id="subtabBtnPubblieMapping" data-subtab="pubblieMappingSection">
-            <span>🎯 2. Associa Canali a Meta Ads</span>
-          </button>
-          <button type="button" class="modal-subtab" id="subtabBtnPubblieList" data-subtab="pubblieListSection">
-            <span>📋 3. Associazioni Salvate (<span id="pubblieMappingsCountBadge">0</span>)</span>
-          </button>
-        </div>
+        <form id="postTargetForm" class="modal-body">
+          <input type="hidden" id="ptPostId">
+          <p style="font-size: 0.85rem; color: var(--text-secondary); margin-top: 0;">
+            Seleziona su quale Campagna e Gruppo di Inserzioni (AdSet) vuoi sponsorizzare questo specifico post.
+          </p>
 
-        <div class="dialog-body" style="padding-top: 14px;">
-          <!-- SECTION 1: API KEY & CONNECTION -->
-          <div class="modal-subview active" id="pubblieKeySection">
-            <div class="info-callout" style="margin-bottom: 16px;">
-              💡 <strong>Dove trovare l'API Key:</strong> Accedi a <a href="https://pubblie.io" target="_blank" rel="noopener" style="color: var(--accent-emerald); font-weight: 600;">Pubblie.io</a>, vai nelle <em>Impostazioni del Profilo &gt; API Keys</em> e genera una nuova chiave personale (formato <code>pk_live_...</code>).
+          <div class="form-group">
+            <label for="ptAdAccount">Account Pubblicitario Meta <span class="req">*</span></label>
+            <select id="ptAdAccount" required></select>
+          </div>
+
+          <div class="form-group">
+            <label for="ptCampaign">Campagna Meta <span class="req">*</span></label>
+            <select id="ptCampaign" required></select>
+          </div>
+
+          <div class="form-group">
+            <label for="ptAdset">Gruppo di Inserzioni (AdSet) <span class="req">*</span></label>
+            <select id="ptAdset" required></select>
+          </div>
+
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="ptCtaLink">URL di Destinazione / Link CTA (Opzionale)</label>
+              <input id="ptCtaLink" type="url" placeholder="Es: https://www.tuosito.it">
             </div>
 
             <div class="form-group">
-              <label for="pubblieApiKeyInput">Personal API Key Pubblie <span class="required">*</span></label>
-              <div class="password-wrapper">
-                <input id="pubblieApiKeyInput" type="password" placeholder="pk_live_xxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off">
-                <button type="button" class="btn-toggle-pwd" id="togglePubblieKeyBtn" title="Mostra/Nascondi">👁️</button>
-              </div>
-              <small class="help-text">La chiave viene salvata in modo sicuro nel database dell'applicazione per le sincronizzazioni future.</small>
-            </div>
-
-            <div id="pubblieConnectionAlert" class="auth-alert" style="display: none; margin-bottom: 16px;"></div>
-
-            <div style="display: flex; gap: 10px; align-items: center; margin-top: 16px;">
-              <button class="btn btn-primary" id="testAndSavePubblieKeyBtn" type="button">
-                <span class="spinner" id="pubblieKeySpinner" style="display: none;"></span>
-                <span id="testAndSavePubblieKeyText">Verifica e Salva Chiave 🚀</span>
-              </button>
-              <button class="btn btn-ghost" id="disconnectPubblieBtn" type="button" style="display: none; color: var(--accent-rose);">
-                Scollega Account
-              </button>
+              <label for="ptCtaType">Pulsante CTA</label>
+              <select id="ptCtaType">
+                <option value="LEARN_MORE">Scopri di piu</option>
+                <option value="SHOP_NOW">Acquista ora</option>
+                <option value="BOOK_TRAVEL">Prenota ora</option>
+                <option value="CONTACT_US">Contattaci</option>
+                <option value="SIGN_UP">Iscriviti</option>
+              </select>
             </div>
           </div>
 
-          <!-- SECTION 2: MAP PUBBLIE CHANNELS TO META (ONE-TIME SETUP) -->
-          <div class="modal-subview" id="pubblieMappingSection" style="display: none;">
-            <div class="info-callout" style="margin-bottom: 16px;">
-              🎯 <strong>Associazione Parametri:</strong> Scegli un Progetto e un Canale Pubblie (es. la tua Pagina Facebook o il Profilo Instagram) e indica su quale Account Meta, Campagna e Gruppo Inserzioni devono essere creati gli annunci quando i post vengono sponsorizzati nel Flow.
-            </div>
-
-            <!-- Shortcut: Auto-fill from an existing Automation -->
-            <div class="shortcut-box" style="margin-bottom: 16px; padding: 12px 14px; background: var(--bg-surface-elevated); border: 1px dashed var(--border-subtle); border-radius: var(--radius-md);">
-              <label style="display: block; font-size: 0.85rem; font-weight: 600; color: var(--accent-emerald); margin-bottom: 6px;">
-                ⚡ Scorciatoia Rapida: Copia parametri da un'automazione esistente
-              </label>
-              <div style="display: flex; gap: 10px; align-items: center;">
-                <select id="pubblieCopyFromAutoSelect" style="flex: 1; padding: 8px 10px; font-size: 0.85rem; background: var(--bg-base); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: var(--text-main);">
-                  <option value="">-- Seleziona un'automazione da copiare --</option>
-                </select>
-                <button type="button" class="btn btn-secondary btn-sm" id="pubblieApplyAutoShortcutBtn">Applica Dati</button>
-              </div>
-            </div>
-
-            <!-- Step 2A: Select Pubblie Project & Channel -->
-            <div class="form-row">
-              <div class="form-group">
-                <label for="mappingPubblieProjectSelect">Progetto Pubblie <span class="required">*</span></label>
-                <select id="mappingPubblieProjectSelect" required>
-                  <option value="">Caricamento progetti...</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="mappingPubblieChannelSelect">Canale Pubblie (Pagina/Profilo) <span class="required">*</span></label>
-                <select id="mappingPubblieChannelSelect" required>
-                  <option value="">-- Seleziona prima un progetto --</option>
-                </select>
-                <small class="help-text">Canale social collegato su Pubblie</small>
-              </div>
-            </div>
-
-            <!-- Step 2B: Meta Parameters -->
-            <div class="form-row">
-              <div class="form-group">
-                <label for="mappingAdAccountSelect">Account Pubblicitario Meta <span class="required">*</span></label>
-                <select id="mappingAdAccountSelect" required>
-                  <option value="">Seleziona account...</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="mappingCampaignSelect">Campagna Meta <span class="required">*</span></label>
-                <select id="mappingCampaignSelect" required>
-                  <option value="">Seleziona prima account...</option>
-                </select>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="mappingAdsetSelect">Gruppo Inserzioni Meta (AdSet) <span class="required">*</span></label>
-                <select id="mappingAdsetSelect" required>
-                  <option value="">Seleziona prima campagna...</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label for="mappingRuleSelect">Regola Meta (Opzionale)</label>
-                <select id="mappingRuleSelect">
-                  <option value="">Nessuna regola</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Dynamic CTA & URL Container (visible only when Campaign requires CTA) -->
-            <div id="mappingCtaContainer" style="display: none; margin-top: 6px; margin-bottom: 16px; padding: 12px 14px; background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.3); border-radius: var(--radius-md);">
-              <div style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; font-weight: 600; color: var(--accent-blue); margin-bottom: 10px;">
-                <span>🎯</span> Questa campagna richiede un link di destinazione obbligatorio (CTA)
-              </div>
-              <div class="form-row" style="margin-bottom: 0;">
-                <div class="form-group" style="flex: 2; margin-bottom: 0;">
-                  <label for="mappingCtaLink">URL di destinazione <span class="required">*</span></label>
-                  <input id="mappingCtaLink" type="url" placeholder="https://www.tuosito.it/promozione" autocomplete="off">
-                  <small class="help-text">Sito web o landing page dove atterreranno gli utenti dopo il click.</small>
-                </div>
-                <div class="form-group" style="flex: 1; margin-bottom: 0;">
-                  <label for="mappingCtaType">Pulsante CTA</label>
-                  <select id="mappingCtaType">
-                    <option value="LEARN_MORE" selected>Scopri di più</option>
-                    <option value="SHOP_NOW">Acquista ora</option>
-                    <option value="SIGN_UP">Iscriviti</option>
-                    <option value="CONTACT_US">Contattaci</option>
-                    <option value="BOOK_NOW">Prenota subito</option>
-                    <option value="APPLY_NOW">Richiedi ora</option>
-                    <option value="DOWNLOAD">Scarica</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            <div class="form-row">
-              <div class="form-group">
-                <label for="mappingNamingPattern">Pattern Nome Inserzione</label>
-                <input id="mappingNamingPattern" type="text" value="ADV - {platform} - {post}">
-                <small class="help-text">Token: <code>{platform}</code>, <code>{post}</code>, <code>{date}</code>, <code>{id}</code></small>
-              </div>
-              <div class="form-group">
-                <label for="mappingAdStatusSelect">Stato Inserzione alla creazione</label>
-                <select id="mappingAdStatusSelect">
-                  <option value="PAUSED" selected>IN PAUSA (Consigliato per sicurezza)</option>
-                  <option value="ACTIVE">ATTIVO (Avvia subito la spesa)</option>
-                </select>
-              </div>
-            </div>
-
-            <!-- Default Flow Inclusion Checkbox -->
-            <div style="margin-top: 8px; margin-bottom: 16px;">
-              <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem;">
-                <input type="checkbox" id="mappingAutoIncludeFlowCheckbox" checked style="width: 18px; height: 18px; accent-color: var(--accent-emerald);">
-                <span><strong>Includi automaticamente nel Flow:</strong> I nuovi post schedulati su questo canale saranno contrassegnati come <em>Inclusi per la sponsorizzazione</em> (potrai sempre escluderli singolarmente dalla Timeline).</span>
-              </label>
-            </div>
-
-            <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px;">
-              <button class="btn btn-primary" id="savePubblieMappingBtn" type="button">
-                <span>💾 Salva Associazione Canale</span>
-              </button>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" id="resetPostTargetBtn" type="button">Ripristina Default Canale</button>
+            <div style="display: flex; gap: 10px;">
+              <button class="btn btn-secondary" id="cancelPostTargetBtn" type="button">Annulla</button>
+              <button class="btn btn-primary" type="submit">Applica a questo Post</button>
             </div>
           </div>
+        </form>
+      </div>
+    </div>
 
-          <!-- SECTION 3: SAVED MAPPINGS LIST -->
-          <div class="modal-subview" id="pubblieListSection" style="display: none;">
-            <div id="pubblieMappingsListContainer" style="display: flex; flex-direction: column; gap: 10px;">
-              <!-- Dynamically populated -->
-            </div>
-          </div>
-        </div>
-
-        <div class="dialog-actions">
-          <button class="btn btn-secondary" id="closePubblieConfigBottomBtn" type="button">Chiudi</button>
-        </div>
-      </form>
-    </dialog>
-
-    <script src="app.js?v=2.8"></script>
+    <script src="app.js?v=3.0"></script>
   </body>
 </html>
