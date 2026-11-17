@@ -96,7 +96,7 @@
           </button>
           <button class="nav-tab" id="tabBtnGuide" type="button" role="tab" aria-selected="false" data-tab="guideView">
             <span class="nav-tab-indicator"></span>
-            <span class="nav-tab-label">Setup Render</span>
+            <span class="nav-tab-label">Setup Hosting</span>
           </button>
         </nav>
 
@@ -409,7 +409,7 @@
         </section>
 
         <!-- ============================================================== -->
-        <!-- VIEW 5: GUIDA SETUP RENDER & CRON-JOB                          -->
+        <!-- VIEW 5: GUIDA SETUP HOSTING SENZA SCADENZA & CRON-JOB          -->
         <!-- ============================================================== -->
         <section class="app-view" id="guideView" role="tabpanel" aria-labelledby="tabBtnGuide" hidden>
           <div class="guide-layout">
@@ -429,7 +429,7 @@
               <div class="guide-steps" style="margin-top: 12px;">
                 <div class="guide-step">
                   <strong>Come abilitare il pulsante "Connetti con Facebook":</strong>
-                  <p>Assicurati di aver inserito nelle variabili d'ambiente su Render (o nel file <code>.env</code>) queste due chiavi della tua App Meta:</p>
+                  <p>Assicurati di aver inserito nelle variabili d'ambiente del tuo hosting (o nel file <code>.env</code>) queste due chiavi della tua App Meta:</p>
                   <div class="env-vars-list" style="margin-top: 8px;">
                     <div class="env-item">
                       <code>META_APP_ID</code>
@@ -445,34 +445,42 @@
             </div>
 
             <div class="card-panel guide-card">
-              <span class="badge-pill">PASSO 1 - HOSTING CLOUD</span>
-              <h3>Configurazione su Render.com</h3>
-              <p>Questa applicazione include gia un file <code>render.yaml</code> pronto per il deploy automatico con database persistente.</p>
+              <span class="badge-pill">PASSO 1 - DEPLOY GRATUITO SU CLOUDFLARE WORKERS (SENZA SCADENZA)</span>
+              <h3>Cloudflare Workers + Neon PostgreSQL (Permanente)</h3>
+              <p>Il progetto include gia <code>wrangler.toml</code>, <code>worker.js</code> e <code>.assetsignore</code> preconfigurati per Cloudflare Workers con supporto Node.js (<code>nodejs_compat</code>).</p>
 
               <ol class="guide-steps">
                 <li>
-                  <strong>Carica il progetto su GitHub</strong>
-                  <p>Crea un repository privato su GitHub e carica tutti i file di questa cartella (escluso il file <code>.env</code>).</p>
+                  <strong>1. Crea il Database PostgreSQL gratuito su Neon.tech</strong>
+                  <p>Vai su <code>neon.tech</code>, crea un progetto gratuito permanente e copia la stringa di connessione <code>postgresql://...</code> che userai come <code>DATABASE_URL</code>.</p>
                 </li>
                 <li>
-                  <strong>Crea il Web Service su Render</strong>
-                  <p>Accedi a Render.com, clicca su <strong>New + &rarr; Web Service</strong> e collega il tuo repository GitHub.</p>
+                  <strong>2. Collega il Repository su Cloudflare Dashboard</strong>
+                  <p>Accedi a <code>dash.cloudflare.com</code>, apri <strong>Workers &amp; Pages &rarr; Create &rarr; Workers &rarr; Import a repository</strong>, seleziona il tuo repository GitHub e lascia il comando di deploy predefinito <code>npx wrangler deploy</code>.</p>
                 </li>
                 <li>
-                  <strong>Configura le Variabili d'Ambiente (Environment Variables)</strong>
-                  <p>Nella sezione <em>Environment</em> di Render, aggiungi le seguenti variabili:</p>
+                  <strong>3. Inserisci le Variabili d'Ambiente su Cloudflare</strong>
+                  <p>Nel tuo Worker su Cloudflare vai in <strong>Settings &rarr; Variables and Secrets</strong> e aggiungi:</p>
                   <div class="env-vars-list">
                     <div class="env-item">
+                      <code>DATABASE_URL</code>
+                      <span>La stringa PostgreSQL di Neon.tech (salva automazioni, decisioni timeline, log e token per sempre)</span>
+                    </div>
+                    <div class="env-item">
                       <code>META_ACCESS_TOKEN</code>
-                      <span>Il tuo System User Token o Long-Lived Token di Meta</span>
+                      <span>Il tuo System User Token o Long-Lived Token di Meta Ads</span>
+                    </div>
+                    <div class="env-item">
+                      <code>PUBBLIE_API_KEY</code>
+                      <span>La chiave API di Pubblie (opzionale, salvabile anche dalla dashboard)</span>
                     </div>
                     <div class="env-item">
                       <code>CRON_SECRET</code>
                       <span>Una password segreta a tua scelta (es. <code>mio_segreto_2025</code>) per proteggere l'endpoint cron</span>
                     </div>
                     <div class="env-item">
-                      <code>DATABASE_URL</code>
-                      <span>(Opzionale ma consigliato) La stringa di connessione Internal Database URL di un database PostgreSQL creato su Render</span>
+                      <code>APP_PASSWORD</code>
+                      <span>Opzionale: imposta la Master Password (default preconfigurato: <code>Salernitana:86</code>)</span>
                     </div>
                   </div>
                 </li>
@@ -480,31 +488,31 @@
             </div>
 
             <div class="card-panel guide-card">
-              <span class="badge-pill">PASSO 2 - SCHEDULATORE ESTERNO</span>
-              <h3>Configurazione su cron-job.org</h3>
-              <p>Su cron-job.org puoi attivare tutte le automazioni di tutti i tuoi clienti con un singolo cronjob.</p>
+              <span class="badge-pill">PASSO 2 - CRON NATIVO CLOUDFLARE O CRON-JOB.ORG</span>
+              <h3>Esecuzione Automatica Ogni 15 Minuti</h3>
+              <p>Il file <code>wrangler.toml</code> attiva gia in automatico il <strong>Cron Trigger nativo di Cloudflare</strong> ogni 15 minuti (<code>*/15 * * * *</code>). In alternativa puoi usare anche cron-job.org:</p>
 
               <div class="cron-config-box">
                 <div class="form-group">
-                  <label>URL da chiamare su cron-job.org</label>
+                  <label>URL da chiamare (se usi anche cron-job.org)</label>
                   <div class="copy-input-group">
-                    <input id="guideCronUrl" type="text" readonly value="https://tuo-dominio.onrender.com/api/cron/check-and-sponsor">
+                    <input id="guideCronUrl" type="text" readonly value="https://autosponsor-ads.tuo-account.workers.dev/api/cron/check-and-sponsor">
                     <button class="btn btn-secondary btn-xs" id="copyCronUrlBtn" type="button">Copia URL</button>
                   </div>
                 </div>
 
                 <div class="cron-specs">
                   <div class="spec-row">
-                    <span class="spec-key">Metodo HTTP:</span>
+                    <span class="spec-key">Cron Trigger Nativo Cloudflare:</span>
+                    <code class="spec-val">Attivo di default in wrangler.toml (*/15 * * * *)</code>
+                  </div>
+                  <div class="spec-row">
+                    <span class="spec-key">Metodo HTTP (per cron esterno):</span>
                     <code class="spec-val">POST</code> (oppure <code>GET</code>)
                   </div>
                   <div class="spec-row">
-                    <span class="spec-key">Header di Sicurezza (se hai impostato CRON_SECRET):</span>
+                    <span class="spec-key">Header di Sicurezza (per cron esterno):</span>
                     <code class="spec-val">Authorization: Bearer &lt;IL_TUO_CRON_SECRET&gt;</code>
-                  </div>
-                  <div class="spec-row">
-                    <span class="spec-key">Frequenza consigliata su cron-job.org:</span>
-                    <code class="spec-val">Ogni 15 minuti (*/15 * * * *)</code> o <code>Ogni ora</code>
                   </div>
                 </div>
               </div>

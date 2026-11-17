@@ -42,23 +42,37 @@ function saveJsonStore() {
 }
 
 async function initDb(databaseUrl) {
-  // 1. Try PostgreSQL cloud (Neon / Supabase / Render Postgres)
+  // 1. Try PostgreSQL cloud (Railway / Neon / Supabase / Render Postgres)
   if (databaseUrl && (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://"))) {
-    try {
-      const { Pool } = require("pg");
-      pgPool = new Pool({
-        connectionString: databaseUrl,
-        ssl: databaseUrl.includes("localhost") ? false : { rejectUnauthorized: false }
-      });
-      await pgPool.query("SELECT 1");
-      dbType = "postgres";
-      console.log("[DB] Connesso con successo a PostgreSQL cloud");
-      await setupPostgresSchema();
-      return;
-    } catch (err) {
-      console.error("[DB] Connessione PostgreSQL fallita, provo storage locale:", err.message);
-      pgPool = null;
+    const { Pool } = require("pg");
+    const isInternalOrLocal =
+      databaseUrl.includes("localhost") ||
+      databaseUrl.includes("127.0.0.1") ||
+      databaseUrl.includes(".railway.internal") ||
+      databaseUrl.includes("sslmode=disable");
+
+    const sslConfigsToTry = isInternalOrLocal
+      ? [false, { rejectUnauthorized: false }]
+      : [{ rejectUnauthorized: false }, false];
+
+    for (const sslConfig of sslConfigsToTry) {
+      try {
+        const candidatePool = new Pool({
+          connectionString: databaseUrl,
+          ssl: sslConfig
+        });
+        await candidatePool.query("SELECT 1");
+        pgPool = candidatePool;
+        dbType = "postgres";
+        console.log(`[DB] Connesso con successo a PostgreSQL cloud (SSL: ${sslConfig ? "attivo" : "disattivato"})`);
+        await setupPostgresSchema();
+        return;
+      } catch (err) {
+        pgPool = null;
+        console.warn(`[DB] Tentativo PostgreSQL (SSL: ${sslConfig ? "attivo" : "disattivato"}) non riuscito:`, err.message);
+      }
     }
+    console.error("[DB] Connessione PostgreSQL fallita su tutti i profili SSL, passo a storage locale.");
   }
 
   // 2. Try native node:sqlite (Node 22+)

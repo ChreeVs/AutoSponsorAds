@@ -11,11 +11,30 @@ const { detectMetaPlatform, isStandardPostFormat, deduplicateTimelineItems } = r
 const ROOT = __dirname;
 const PORT = Number(process.env.PORT || 3000);
 const env = { ...loadEnv(path.join(ROOT, ".env")), ...process.env };
-const CRON_SECRET = env.CRON_SECRET || "";
+let CRON_SECRET = env.CRON_SECRET || "";
 
 const metaService = new MetaService(env);
 const engine = new AutomationEngine(metaService);
 const pubblieService = new PubblieService(env);
+
+function injectRuntimeEnv(runtimeEnv = {}) {
+  if (!runtimeEnv || typeof runtimeEnv !== "object") return;
+  for (const [k, v] of Object.entries(runtimeEnv)) {
+    if (typeof v === "string") {
+      env[k] = v;
+    }
+  }
+  if (runtimeEnv.HYPERDRIVE && runtimeEnv.HYPERDRIVE.connectionString) {
+    env.DATABASE_URL = runtimeEnv.HYPERDRIVE.connectionString;
+  }
+  if (env.CRON_SECRET) {
+    CRON_SECRET = env.CRON_SECRET;
+  }
+  metaService.updateConfig(env);
+  if (env.PUBBLIE_API_KEY && !pubblieService.getApiKey()) {
+    pubblieService.setApiKey(env.PUBBLIE_API_KEY);
+  }
+}
 
 const mimeTypes = {
   ".html": "text/html; charset=utf-8",
@@ -283,7 +302,7 @@ async function handleApi(req, res, url) {
       }
 
       const forceAll = url.searchParams.get("force") !== "false";
-      const isSync = url.searchParams.get("sync") === "true" || url.searchParams.get("wait") === "true";
+      const isSync = Boolean(process.env.VERCEL || env.CLOUDFLARE_WORKERS) || url.searchParams.get("sync") === "true" || url.searchParams.get("wait") === "true";
 
       if (isSync) {
         const result = await engine.runAllDueAutomations("EXTERNAL_CRON", forceAll);
@@ -1641,7 +1660,35 @@ function serveStatic(req, res, url) {
   });
 }
 
-const server = http.createServer(async (req, res) => {
+let initPromise = null;
+
+async function ensureInitialized() {
+  if (!initPromise) {
+    initPromise = (async () => {
+      await db.initDb(env.DATABASE_URL);
+
+      if (!metaService.token()) {
+        const savedToken = await db.getSetting("META_ACCESS_TOKEN");
+        if (savedToken) {
+          metaService.updateConfig({ META_ACCESS_TOKEN: savedToken });
+          console.log("[Auth] Token Meta caricato dal database persistente");
+        }
+      }
+
+      if (!pubblieService.getApiKey()) {
+        const savedPubblieKey = await db.getSetting("PUBBLIE_API_KEY");
+        if (savedPubblieKey) {
+          pubblieService.setApiKey(savedPubblieKey);
+          console.log("[Pubblie] Chiave API Pubblie caricata dal database persistente");
+        }
+      }
+    })();
+  }
+  return initPromise;
+}
+
+async function requestHandler(req, res) {
+  await ensureInitialized();
   applySecurityHeaders(res, req);
   const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
 
@@ -1656,40 +1703,37 @@ const server = http.createServer(async (req, res) => {
   }
 
   serveStatic(req, res, url);
-});
+}
+
+const server = http.createServer(requestHandler);
 
 async function start() {
   try {
-    await db.initDb(env.DATABASE_URL);
+    await ensureInitialized();
 
-    // If no access token in env, check DB
-    if (!metaService.token()) {
-      const savedToken = await db.getSetting("META_ACCESS_TOKEN");
-      if (savedToken) {
-        metaService.updateConfig({ META_ACCESS_TOKEN: savedToken });
-        console.log("[Auth] Token Meta caricato dal database persistente");
-      }
+    if (!process.env.VERCEL) {
+      engine.startInternalScheduler();
+      server.listen(PORT, () => {
+        console.log(`AutoSponsorAds attivo su http://localhost:${PORT}`);
+        console.log(`Cron Webhook disponibile su: http://localhost:${PORT}/api/cron/check-and-sponsor`);
+      });
     }
-
-    // Check Pubblie API Key from DB
-    if (!pubblieService.getApiKey()) {
-      const savedPubblieKey = await db.getSetting("PUBBLIE_API_KEY");
-      if (savedPubblieKey) {
-        pubblieService.setApiKey(savedPubblieKey);
-        console.log("[Pubblie] Chiave API Pubblie caricata dal database persistente");
-      }
-    }
-
-    engine.startInternalScheduler();
-
-    server.listen(PORT, () => {
-      console.log(`AutoSponsorAds attivo su http://localhost:${PORT}`);
-      console.log(`Cron Webhook disponibile su: http://localhost:${PORT}/api/cron/check-and-sponsor`);
-    });
   } catch (err) {
     console.error("Errore critico durante l'avvio:", err);
     process.exit(1);
   }
 }
 
-start();
+if (require.main === module && !process.env.VERCEL) {
+  start();
+}
+
+requestHandler.injectRuntimeEnv = injectRuntimeEnv;
+requestHandler.ensureInitialized = ensureInitialized;
+requestHandler.runScheduledCron = async function runScheduledCron(runtimeEnv) {
+  if (runtimeEnv) injectRuntimeEnv(runtimeEnv);
+  await ensureInitialized();
+  return engine.runAllDueAutomations("CLOUDFLARE_CRON", true);
+};
+
+module.exports = requestHandler;
