@@ -124,6 +124,18 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    const romeHourStr = new Intl.DateTimeFormat("en-US", {
+      timeZone: "Europe/Rome",
+      hour: "2-digit",
+      hour12: false
+    }).format(new Date());
+    const romeHour = Number(romeHourStr) === 24 ? 0 : Number(romeHourStr);
+
+    if (event && event.cron === "0 16,17 * * *" && romeHour !== 18) {
+      console.log(`[Cloudflare Cron] Trigger ignorato: ora italiana attuale ${romeHour}:00 (esecuzione programmata alle 18:00)`);
+      return;
+    }
+
     if (requestHandler.runScheduledCron) {
       const promise = requestHandler.runScheduledCron({
         ...env,

@@ -80,3 +80,28 @@ test("deduplicateTimelineItems removes duplicate posts and non-Meta items", () =
   assert.equal(deduped.length, 2);
   assert.deepEqual(deduped.map(i => i.platform), ["Facebook", "Instagram"]);
 });
+
+test("AutomationEngine.getNextDaily1800RomeMs computes next 18:00 Europe/Rome across CET and CEST", () => {
+  const AutomationEngine = require("./automationEngine");
+  // Winter (CET = UTC+1): 10:00 UTC is 11:00 Rome -> next 18:00 Rome is today at 17:00 UTC
+  const winterMorningUtc = Date.parse("2026-11-17T10:00:00.000Z");
+  assert.equal(
+    new Date(AutomationEngine.getNextDaily1800RomeMs(winterMorningUtc)).toISOString(),
+    "2026-11-17T17:00:00.000Z"
+  );
+
+  // Winter (CET = UTC+1): 17:30 UTC is 18:30 Rome -> next 18:00 Rome is tomorrow at 17:00 UTC
+  const winterEveningUtc = Date.parse("2026-11-17T17:30:00.000Z");
+  assert.equal(
+    new Date(AutomationEngine.getNextDaily1800RomeMs(winterEveningUtc)).toISOString(),
+    "2026-11-18T17:00:00.000Z"
+  );
+
+  // Summer (CEST = UTC+2): 10:00 UTC is 12:00 Rome -> next 18:00 Rome is today at 16:00 UTC
+  const summerMorningUtc = Date.parse("2026-07-15T10:00:00.000Z");
+  assert.equal(
+    new Date(AutomationEngine.getNextDaily1800RomeMs(summerMorningUtc)).toISOString(),
+    "2026-07-15T16:00:00.000Z"
+  );
+});
+

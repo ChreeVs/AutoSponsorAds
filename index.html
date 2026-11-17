@@ -428,8 +428,26 @@
 
               <div class="guide-steps" style="margin-top: 12px;">
                 <div class="guide-step">
-                  <strong>Come abilitare il pulsante "Connetti con Facebook":</strong>
-                  <p>Assicurati di aver inserito nelle variabili d'ambiente del tuo hosting (o nel file <code>.env</code>) queste due chiavi della tua App Meta:</p>
+                  <strong>Valori esatti da incollare nella tua App su Meta for Developers:</strong>
+                  <div class="cron-config-box" style="margin-top: 10px;">
+                    <div class="form-group">
+                      <label>1. Dominio dell'app (Impostazioni App &rarr; Di base &rarr; Domini dell'app)</label>
+                      <div class="copy-input-group">
+                        <input id="guideAppDomain" type="text" readonly value="autosponsorads.tuo-account.workers.dev">
+                        <button class="btn btn-secondary btn-xs" id="copyAppDomainBtn" type="button">Copia Dominio</button>
+                      </div>
+                    </div>
+                    <div class="form-group" style="margin-top: 10px;">
+                      <label>2. URI di reindirizzamento OAuth valido (Facebook Login &rarr; Impostazioni)</label>
+                      <div class="copy-input-group">
+                        <input id="guideOAuthRedirectUrl" type="text" readonly value="https://autosponsorads.tuo-account.workers.dev/auth/callback">
+                        <button class="btn btn-secondary btn-xs" id="copyOAuthRedirectBtn" type="button">Copia URI OAuth</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="guide-step" style="margin-top: 12px;">
+                  <strong>Variabili d'ambiente richieste su Cloudflare per il login Facebook:</strong>
                   <div class="env-vars-list" style="margin-top: 8px;">
                     <div class="env-item">
                       <code>META_APP_ID</code>
@@ -489,14 +507,14 @@
 
             <div class="card-panel guide-card">
               <span class="badge-pill">PASSO 2 - CRON NATIVO CLOUDFLARE O CRON-JOB.ORG</span>
-              <h3>Esecuzione Automatica Ogni 15 Minuti</h3>
-              <p>Il file <code>wrangler.toml</code> attiva gia in automatico il <strong>Cron Trigger nativo di Cloudflare</strong> ogni 15 minuti (<code>*/15 * * * *</code>). In alternativa puoi usare anche cron-job.org:</p>
+              <h3>Esecuzione Automatica Ogni Giorno alle 18:00</h3>
+              <p>Il file <code>wrangler.toml</code> attiva gia in automatico il <strong>Cron Trigger nativo di Cloudflare</strong> ogni giorno alle <strong>ore 18:00 (ora italiana)</strong>. In alternativa puoi usare anche cron-job.org:</p>
 
               <div class="cron-config-box">
                 <div class="form-group">
                   <label>URL da chiamare (se usi anche cron-job.org)</label>
                   <div class="copy-input-group">
-                    <input id="guideCronUrl" type="text" readonly value="https://autosponsor-ads.tuo-account.workers.dev/api/cron/check-and-sponsor">
+                    <input id="guideCronUrl" type="text" readonly value="https://autosponsorads.tuo-account.workers.dev/api/cron/check-and-sponsor">
                     <button class="btn btn-secondary btn-xs" id="copyCronUrlBtn" type="button">Copia URL</button>
                   </div>
                 </div>
@@ -504,7 +522,7 @@
                 <div class="cron-specs">
                   <div class="spec-row">
                     <span class="spec-key">Cron Trigger Nativo Cloudflare:</span>
-                    <code class="spec-val">Attivo di default in wrangler.toml (*/15 * * * *)</code>
+                    <code class="spec-val">Ogni giorno alle 18:00 ora italiana (0 16,17 * * *)</code>
                   </div>
                   <div class="spec-row">
                     <span class="spec-key">Metodo HTTP (per cron esterno):</span>
@@ -755,15 +773,13 @@
 
           <div class="form-row-2">
             <div class="form-group">
-              <label for="autoInterval">Controlla Nuovi Post Ogni</label>
+              <label for="autoInterval">Pianificazione Controllo e Sponsorizzazione</label>
               <select id="autoInterval">
-                <option value="0.25">Ogni 15 Minuti</option>
-                <option value="0.5">Ogni 30 Minuti</option>
-                <option value="1">Ogni Ora</option>
-                <option value="3">Ogni 3 Ore</option>
+                <option value="24" selected>Ogni giorno alle ore 18:00</option>
+                <option value="12">Ogni 12 Ore (2 volte al giorno)</option>
                 <option value="6">Ogni 6 Ore</option>
-                <option value="12" selected>Ogni 12 Ore (2 volte al giorno)</option>
-                <option value="24">Ogni 24 Ore (1 volta al giorno)</option>
+                <option value="3">Ogni 3 Ore</option>
+                <option value="1">Ogni Ora</option>
               </select>
             </div>
 

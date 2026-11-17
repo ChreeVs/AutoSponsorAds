@@ -9,4 +9,4 @@ binding = "ASSETS"
 not_found_handling = "single-page-application"
 
 [triggers]
-crons = ["*/15 * * * *"]
+crons = ["0 16,17 * * *"]

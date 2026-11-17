@@ -38,6 +38,43 @@ function escapeRegexPattern(string) {
   return string.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function getRomeDateParts(utcMs = Date.now()) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Europe/Rome",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+  const parts = {};
+  for (const p of formatter.formatToParts(new Date(utcMs))) {
+    if (p.type !== "literal") parts[p.type] = Number(p.value);
+  }
+  if (parts.hour === 24) parts.hour = 0;
+  return parts;
+}
+
+function getNextDaily1800RomeMs(nowMs = Date.now()) {
+  const parts = getRomeDateParts(nowMs);
+  const romeAsUtcMs = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  const offsetMs = romeAsUtcMs - Math.floor(nowMs / 1000) * 1000;
+  const todayTargetRomeUtcMs = Date.UTC(parts.year, parts.month - 1, parts.day, 18, 0, 0);
+  let targetUtcMs = todayTargetRomeUtcMs - offsetMs;
+
+  if (targetUtcMs <= nowMs) {
+    const tomorrowProbeMs = targetUtcMs + 24 * 3600 * 1000;
+    const tomParts = getRomeDateParts(tomorrowProbeMs);
+    const tomRomeAsUtcMs = Date.UTC(tomParts.year, tomParts.month - 1, tomParts.day, tomParts.hour, tomParts.minute, tomParts.second);
+    const tomOffsetMs = tomRomeAsUtcMs - Math.floor(tomorrowProbeMs / 1000) * 1000;
+    targetUtcMs = Date.UTC(tomParts.year, tomParts.month - 1, tomParts.day, 18, 0, 0) - tomOffsetMs;
+  }
+
+  return targetUtcMs;
+}
+
 class AutomationEngine {
   constructor(metaService) {
     this.meta = metaService;
@@ -489,16 +526,22 @@ class AutomationEngine {
 
   startInternalScheduler() {
     if (this.schedulerTimer) clearInterval(this.schedulerTimer);
+    this.lastDailyRunDateKey = null;
 
-    // Run check every 15 minutes when process is alive
-    const CHECK_INTERVAL_MS = 15 * 60 * 1000;
+    // Verifica ogni 30 secondi se in Italia (Europe/Rome) sono scoccate le 18:00
+    const CHECK_TICK_MS = 30 * 1000;
     this.schedulerTimer = setInterval(() => {
-      this.runAllDueAutomations("INTERNAL_SCHEDULER").catch(err => {
-        console.error("[ENGINE] Errore nello scheduler interno:", err.message);
-      });
-    }, CHECK_INTERVAL_MS);
+      const parts = getRomeDateParts(Date.now());
+      const dateKey = `${parts.year}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+      if (parts.hour === 18 && parts.minute === 0 && this.lastDailyRunDateKey !== dateKey) {
+        this.lastDailyRunDateKey = dateKey;
+        this.runAllDueAutomations("DAILY_1800_SCHEDULER", true).catch(err => {
+          console.error("[ENGINE] Errore nello scheduler giornaliero ore 18:00:", err.message);
+        });
+      }
+    }, CHECK_TICK_MS);
 
-    console.log("[ENGINE] Schedulatore interno avviato (controllo ogni 15 minuti)");
+    console.log("[ENGINE] Schedulatore giornaliero avviato (esecuzione automatica ogni giorno alle 18:00 ora italiana)");
   }
 
   stopInternalScheduler() {
@@ -512,42 +555,34 @@ class AutomationEngine {
     try {
       const automations = await db.getAutomations();
       const active = automations.filter(a => a.enabled);
+      const now = Date.now();
+      const next1800Ms = getNextDaily1800RomeMs(now);
+      const remainingMs = Math.max(0, next1800Ms - now);
+
       if (!active.length) {
         return {
           hasActive: false,
           isRunning: this.isRunning,
-          nextDueMs: null,
-          nextCheckDate: null,
+          nextDueMs: remainingMs,
+          nextCheckDate: new Date(next1800Ms).toISOString(),
+          scheduleLabel: "Ogni giorno alle 18:00",
           targetAutomation: null,
           activeCount: 0,
           totalCount: automations.length
         };
       }
 
-      const now = Date.now();
-      let earliestNextCheck = Infinity;
-      let earliestAuto = null;
-
-      for (const auto of active) {
-        const intervalMs = (auto.check_interval_hours || 12) * 3600 * 1000;
-        const lastCheck = auto.last_checked_at ? new Date(auto.last_checked_at).getTime() : 0;
-        const nextCheck = lastCheck ? (lastCheck + intervalMs) : now;
-        if (nextCheck < earliestNextCheck) {
-          earliestNextCheck = nextCheck;
-          earliestAuto = auto;
-        }
-      }
-
-      const remainingMs = Math.max(0, earliestNextCheck - now);
+      const firstAuto = active[0];
       return {
         hasActive: true,
         isRunning: this.isRunning,
         nextDueMs: remainingMs,
-        nextCheckDate: earliestNextCheck < Infinity ? new Date(earliestNextCheck).toISOString() : null,
-        targetAutomation: earliestAuto ? {
-          id: earliestAuto.id,
-          name: earliestAuto.name,
-          platform: earliestAuto.platform
+        nextCheckDate: new Date(next1800Ms).toISOString(),
+        scheduleLabel: "Ogni giorno alle 18:00",
+        targetAutomation: firstAuto ? {
+          id: firstAuto.id,
+          name: firstAuto.name,
+          platform: firstAuto.platform
         } : null,
         activeCount: active.length,
         totalCount: automations.length
@@ -562,5 +597,8 @@ class AutomationEngine {
     }
   }
 }
+
+AutomationEngine.getRomeDateParts = getRomeDateParts;
+AutomationEngine.getNextDaily1800RomeMs = getNextDaily1800RomeMs;
 
 module.exports = AutomationEngine;

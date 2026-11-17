@@ -318,6 +318,32 @@ function bindNavigation() {
     cronUrlInput.value = `${window.location.origin}/api/cron/check-and-sponsor`;
   }
 
+  const hostOnly = window.location.host || "autosponsorads.workers.dev";
+  const isLocal = hostOnly.startsWith("localhost") || hostOnly.startsWith("127.0.0.1");
+  const oauthProto = isLocal ? "http" : "https";
+
+  const appDomainInput = $("#guideAppDomain");
+  if (appDomainInput) {
+    appDomainInput.value = hostOnly;
+  }
+
+  const oauthRedirectInput = $("#guideOAuthRedirectUrl");
+  if (oauthRedirectInput) {
+    oauthRedirectInput.value = `${oauthProto}://${hostOnly}/auth/callback`;
+  }
+
+  $("#copyAppDomainBtn")?.addEventListener("click", () => {
+    const val = $("#guideAppDomain")?.value || "";
+    navigator.clipboard?.writeText(val);
+    showBanner("Dominio dell'app copiato negli appunti!", "success");
+  });
+
+  $("#copyOAuthRedirectBtn")?.addEventListener("click", () => {
+    const val = $("#guideOAuthRedirectUrl")?.value || "";
+    navigator.clipboard?.writeText(val);
+    showBanner("URI di reindirizzamento OAuth copiato negli appunti!", "success");
+  });
+
   $("#copyCronUrlBtn")?.addEventListener("click", () => {
     const val = $("#guideCronUrl")?.value || "";
     navigator.clipboard?.writeText(val);
@@ -397,11 +423,10 @@ function renderCountdownUI() {
   const kpiSub = $("#kpiNextCheckSub");
   const kpiInd = $("#kpiNextCheckIndicator");
 
-  if (!info || !info.hasActive) {
-    if (headerVal) headerVal.textContent = "In Pausa";
-    if (headerDot) headerDot.className = "timer-pulse-dot paused";
+  if (!info) {
+    if (headerVal) headerVal.textContent = "--:--:--";
     if (kpiVal) kpiVal.textContent = "--:--:--";
-    if (kpiSub) kpiSub.textContent = "Nessuna regola attiva";
+    if (kpiSub) kpiSub.textContent = "Ogni giorno alle 18:00";
     if (kpiInd) kpiInd.className = "status-indicator";
     return;
   }
@@ -419,13 +444,13 @@ function renderCountdownUI() {
   const formatted = formatDurationHMS(remaining);
 
   if (headerVal) headerVal.textContent = formatted;
-  if (headerDot) headerDot.className = "timer-pulse-dot";
+  if (headerDot) headerDot.className = info.hasActive ? "timer-pulse-dot" : "timer-pulse-dot paused";
   if (kpiVal) kpiVal.textContent = formatted;
-  if (kpiInd) kpiInd.className = "status-indicator ok";
+  if (kpiInd) kpiInd.className = info.hasActive ? "status-indicator ok" : "status-indicator";
   if (kpiSub) {
-    kpiSub.textContent = info.targetAutomation
-      ? `Prossima: ${info.targetAutomation.name}`
-      : "Monitoraggio attivo";
+    kpiSub.textContent = info.hasActive
+      ? "Ogni giorno alle ore 18:00"
+      : "Alle 18:00 (nessuna regola attiva)";
   }
 }
 
@@ -553,8 +578,7 @@ function renderAutomations() {
   container.innerHTML = filtered.map((auto) => {
     const isFb = auto.platform === "Facebook";
     const statusDotClass = auto.last_run_status || "IDLE";
-    const intervalNum = Number(auto.check_interval_hours || 12);
-    const intervalLabel = intervalNum < 1 ? `${Math.round(intervalNum * 60)} min` : `${intervalNum} ore`;
+    const scheduleText = `Ogni giorno alle 18:00 (${auto.ad_status || "ACTIVE"})`;
 
     return `
       <article class="auto-list-row ${auto.enabled ? "" : "paused"}" data-id="${escapeHtml(auto.id)}">
@@ -590,8 +614,8 @@ function renderAutomations() {
         <!-- Colonna 3: Frequenza, Non-Retroattivita e Ultimo Controllo -->
         <div class="auto-col-schedule">
           <div class="auto-kv">
-            <span>Frequenza:</span>
-            <strong>Ogni ${escapeHtml(intervalLabel)} (${escapeHtml(auto.ad_status || "ACTIVE")})</strong>
+            <span>Pianificazione:</span>
+            <strong>${escapeHtml(scheduleText)}</strong>
           </div>
           <div class="auto-kv">
             <span>Attiva dal:</span>
@@ -791,7 +815,7 @@ function bindAutomationModal() {
         filter_keywords: ($("#autoKeywords")?.value || "").trim(),
         exclude_keywords: ($("#autoExcludeKeywords")?.value || "").trim(),
         ad_name_pattern: ($("#autoNamePattern")?.value || "ADV - {platform} - {post}").trim(),
-        check_interval_hours: Number($("#autoInterval")?.value || 12),
+        check_interval_hours: Number($("#autoInterval")?.value || 24),
         ad_status: $("#autoAdStatus")?.value || "ACTIVE",
         adset_full_strategy: $("#autoAdsetFullStrategy")?.value || "ROTATE_OLDEST",
         adset_clone_source_id: $("#autoCloneSourceAdset")?.value || null,
@@ -839,7 +863,7 @@ async function openAutomationModal(auto = null) {
   $("#autoPlatform").value = auto?.platform || "Facebook";
   $("#autoKeywords").value = auto?.filter_keywords || "";
   $("#autoExcludeKeywords").value = auto?.exclude_keywords || "";
-  $("#autoInterval").value = String(auto?.check_interval_hours || 12);
+  $("#autoInterval").value = String(auto?.check_interval_hours || 24);
   $("#autoAdStatus").value = auto?.ad_status || "ACTIVE";
   $("#autoNamePattern").value = auto?.ad_name_pattern || "ADV - {platform} - {post}";
   $("#autoAdsetFullStrategy").value = auto?.adset_full_strategy || "ROTATE_OLDEST";

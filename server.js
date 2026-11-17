@@ -172,7 +172,14 @@ function resetLoginRateLimit(ip) {
 }
 
 function isHttpsRequest(req) {
-  return Boolean(req.socket && req.socket.encrypted) || req.headers["x-forwarded-proto"] === "https";
+  if (req.socket && req.socket.encrypted) return true;
+  const proto = String(req.headers["x-forwarded-proto"] || "").toLowerCase();
+  if (proto.includes("https")) return true;
+  const cfVisitor = String(req.headers["cf-visitor"] || "").toLowerCase();
+  if (cfVisitor.includes("https")) return true;
+  const host = String(req.headers["x-forwarded-host"] || req.headers.host || "").toLowerCase();
+  if (host && !host.startsWith("localhost") && !host.startsWith("127.0.0.1")) return true;
+  return false;
 }
 
 function getSessionCookieHeader(token, req, maxAge = 2592000) {
@@ -510,15 +517,15 @@ async function handleApi(req, res, url) {
     if (url.pathname === "/api/automations" && req.method === "GET") {
       const list = await db.getAutomations();
       const now = Date.now();
+      const next1800Ms = AutomationEngine.getNextDaily1800RomeMs
+        ? AutomationEngine.getNextDaily1800RomeMs(now)
+        : now + 24 * 3600 * 1000;
       const enriched = list.map(item => {
-        const intervalMs = (item.check_interval_hours || 12) * 3600 * 1000;
-        const lastCheck = item.last_checked_at ? new Date(item.last_checked_at).getTime() : 0;
-        const nextCheckMs = lastCheck ? lastCheck + intervalMs : now;
         return {
           ...item,
-          next_check_at: new Date(nextCheckMs).toISOString(),
-          seconds_until_next_check: Math.max(0, Math.round((nextCheckMs - now) / 1000)),
-          is_due: now >= nextCheckMs
+          next_check_at: new Date(next1800Ms).toISOString(),
+          seconds_until_next_check: Math.max(0, Math.round((next1800Ms - now) / 1000)),
+          is_due: now >= next1800Ms
         };
       });
       return json(res, 200, { data: enriched });
@@ -547,7 +554,7 @@ async function handleApi(req, res, url) {
         rule_name: body.rule_name || "",
         ad_name_pattern: body.ad_name_pattern || "ADV - {platform} - {post}",
         ad_status: body.ad_status || "PAUSED",
-        check_interval_hours: Number(body.check_interval_hours) || 12,
+        check_interval_hours: Number(body.check_interval_hours) || 24,
         filter_keywords: body.filter_keywords || "",
         exclude_keywords: body.exclude_keywords || "",
         start_time: body.start_time || new Date().toISOString(),
@@ -1455,8 +1462,11 @@ async function handleApi(req, res, url) {
 async function handleOAuth(req, res, url) {
   const appId = (env.META_APP_ID || "").trim();
   const appSecret = (env.META_APP_SECRET || "").trim();
-  const proto = isHttpsRequest(req) ? "https" : "http";
-  const redirectUri = env.META_LOGIN_REDIRECT_URI || `${proto}://${req.headers.host}/auth/callback`;
+  const rawHost = req.headers["x-forwarded-host"] || req.headers.host || url.host || "localhost:3000";
+  const cleanHost = String(rawHost).split(",")[0].trim();
+  const isLocalhost = cleanHost.startsWith("localhost") || cleanHost.startsWith("127.0.0.1");
+  const proto = isLocalhost ? "http" : "https";
+  const redirectUri = (env.META_LOGIN_REDIRECT_URI || "").trim() || `${proto}://${cleanHost}/auth/callback`;
 
   if (!appId || !appSecret) {
     if (url.pathname.startsWith("/auth/")) {
