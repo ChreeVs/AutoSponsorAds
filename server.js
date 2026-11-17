@@ -1661,11 +1661,14 @@ function serveStatic(req, res, url) {
 }
 
 let initPromise = null;
+let initializedDbUrl = null;
 
 async function ensureInitialized() {
-  if (!initPromise) {
+  const currentDbUrl = env.DATABASE_URL || "";
+  if (!initPromise || (currentDbUrl && initializedDbUrl !== currentDbUrl && db.getDbType() !== "postgres")) {
+    initializedDbUrl = currentDbUrl;
     initPromise = (async () => {
-      await db.initDb(env.DATABASE_URL);
+      await db.initDb(currentDbUrl);
 
       if (!metaService.token()) {
         const savedToken = await db.getSetting("META_ACCESS_TOKEN");

@@ -1,5 +1,6 @@
-const { EventEmitter } = require("events");
-const requestHandler = require("./server");
+import { EventEmitter } from "node:events";
+import { Buffer } from "node:buffer";
+import requestHandler from "./server.js";
 
 function toNodeReq(request, bodyBuffer, url) {
   const req = new EventEmitter();
@@ -89,7 +90,7 @@ function createNodeRes(resolveResponse) {
   };
 }
 
-module.exports = {
+export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 

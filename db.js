@@ -41,8 +41,34 @@ function saveJsonStore() {
   }
 }
 
+function createCloudflarePgPool(connectionString, sslConfig) {
+  const { Client } = require("pg");
+  return {
+    async query(text, params) {
+      const client = new Client({
+        connectionString,
+        ssl: sslConfig,
+        connectionTimeoutMillis: 10000
+      });
+      await client.connect();
+      try {
+        return await client.query(text, params);
+      } finally {
+        try {
+          await client.end();
+        } catch {}
+      }
+    }
+  };
+}
+
 async function initDb(databaseUrl) {
-  // 1. Try PostgreSQL cloud (Railway / Neon / Supabase / Render Postgres)
+  const isCloudflareWorkers = Boolean(
+    process.env.CLOUDFLARE_WORKERS ||
+    typeof globalThis.WebSocketPair !== "undefined"
+  );
+
+  // 1. Try PostgreSQL cloud (Neon / Supabase / Cloudflare Hyperdrive / Postgres)
   if (databaseUrl && (databaseUrl.startsWith("postgres://") || databaseUrl.startsWith("postgresql://"))) {
     const { Pool } = require("pg");
     const isInternalOrLocal =
@@ -57,10 +83,12 @@ async function initDb(databaseUrl) {
 
     for (const sslConfig of sslConfigsToTry) {
       try {
-        const candidatePool = new Pool({
-          connectionString: databaseUrl,
-          ssl: sslConfig
-        });
+        const candidatePool = isCloudflareWorkers
+          ? createCloudflarePgPool(databaseUrl, sslConfig)
+          : new Pool({
+              connectionString: databaseUrl,
+              ssl: sslConfig
+            });
         await candidatePool.query("SELECT 1");
         pgPool = candidatePool;
         dbType = "postgres";
@@ -75,22 +103,25 @@ async function initDb(databaseUrl) {
     console.error("[DB] Connessione PostgreSQL fallita su tutti i profili SSL, passo a storage locale.");
   }
 
-  // 2. Try native node:sqlite (Node 22+)
-  try {
-    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-    const { DatabaseSync } = require("node:sqlite");
-    const dbPath = path.join(DATA_DIR, "autosponsor.db");
-    sqliteDb = new DatabaseSync(dbPath);
-    sqliteDb.exec("PRAGMA journal_mode = WAL;");
-    dbType = "sqlite";
-    console.log(`[DB] Connesso a SQLite locale (${dbPath})`);
-    setupSqliteSchema();
-    return;
-  } catch (err) {
-    console.log(`[DB] node:sqlite non disponibile in questo ambiente (${err.message}). Attivazione JSON Storage universale.`);
+  // 2. Try native node:sqlite (Node 22+, skipped on Cloudflare Workers)
+  if (!isCloudflareWorkers) {
+    try {
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      const sqliteModuleId = ["node", "sqlite"].join(":");
+      const { DatabaseSync } = eval("require")(sqliteModuleId);
+      const dbPath = path.join(DATA_DIR, "autosponsor.db");
+      sqliteDb = new DatabaseSync(dbPath);
+      sqliteDb.exec("PRAGMA journal_mode = WAL;");
+      dbType = "sqlite";
+      console.log(`[DB] Connesso a SQLite locale (${dbPath})`);
+      setupSqliteSchema();
+      return;
+    } catch (err) {
+      console.log(`[DB] node:sqlite non disponibile in questo ambiente (${err.message}). Attivazione JSON Storage universale.`);
+    }
   }
 
-  // 3. Universal JSON file storage (works on ALL Node versions: 18, 20, 22, 24)
+  // 3. Universal JSON / In-memory storage
   dbType = "json";
   loadJsonStore();
   console.log(`[DB] Connesso a JSON Storage locale (${JSON_STORE_PATH})`);
