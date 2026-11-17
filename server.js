@@ -8,9 +8,9 @@ const AutomationEngine = require("./automationEngine");
 const PubblieService = require("./pubblieService");
 const { detectMetaPlatform, isStandardPostFormat, deduplicateTimelineItems } = require("./postFilter");
 
-const ROOT = __dirname;
-const PORT = Number(process.env.PORT || 3000);
-const env = { ...loadEnv(path.join(ROOT, ".env")), ...process.env };
+const ROOT = typeof __dirname !== "undefined" ? __dirname : "/";
+const PORT = Number((typeof process !== "undefined" && process.env && process.env.PORT) || 3000);
+const env = { ...loadEnv(path.join(ROOT, ".env")), ...(typeof process !== "undefined" && process.env ? process.env : {}) };
 let CRON_SECRET = env.CRON_SECRET || "";
 
 const metaService = new MetaService(env);
@@ -45,20 +45,27 @@ const mimeTypes = {
 };
 
 function loadEnv(filePath) {
-  if (!fs.existsSync(filePath)) return {};
+  try {
+    if (typeof __dirname === "undefined" || typeof globalThis.WebSocketPair !== "undefined") {
+      return {};
+    }
+    if (!fs.existsSync(filePath)) return {};
 
-  return fs.readFileSync(filePath, "utf8")
-    .split(/\r?\n/)
-    .reduce((acc, line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) return acc;
-      const separator = trimmed.indexOf("=");
-      if (separator === -1) return acc;
-      const key = trimmed.slice(0, separator).trim();
-      const value = trimmed.slice(separator + 1).trim();
-      acc[key] = value;
-      return acc;
-    }, {});
+    return fs.readFileSync(filePath, "utf8")
+      .split(/\r?\n/)
+      .reduce((acc, line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) return acc;
+        const separator = trimmed.indexOf("=");
+        if (separator === -1) return acc;
+        const key = trimmed.slice(0, separator).trim();
+        const value = trimmed.slice(separator + 1).trim();
+        acc[key] = value;
+        return acc;
+      }, {});
+  } catch {
+    return {};
+  }
 }
 
 function applySecurityHeaders(res, req = null) {
@@ -478,8 +485,8 @@ async function handleApi(req, res, url) {
         hasAppSecret: Boolean(env.META_APP_SECRET),
         hasToken: Boolean(metaService.token()),
         tokenHealth,
-        uptimeSeconds: Math.round(process.uptime()),
-        nodeVersion: process.version,
+        uptimeSeconds: typeof process !== "undefined" && typeof process.uptime === "function" ? Math.round(process.uptime()) : 0,
+        nodeVersion: (typeof process !== "undefined" && process.version) ? process.version : "Cloudflare-Workers",
         scheduler
       });
     }
@@ -1708,13 +1715,12 @@ async function requestHandler(req, res) {
   serveStatic(req, res, url);
 }
 
-const server = http.createServer(requestHandler);
-
 async function start() {
   try {
     await ensureInitialized();
 
     if (!process.env.VERCEL) {
+      const server = http.createServer(requestHandler);
       engine.startInternalScheduler();
       server.listen(PORT, () => {
         console.log(`AutoSponsorAds attivo su http://localhost:${PORT}`);
@@ -1723,11 +1729,21 @@ async function start() {
     }
   } catch (err) {
     console.error("Errore critico durante l'avvio:", err);
-    process.exit(1);
+    if (typeof process !== "undefined" && typeof process.exit === "function") {
+      process.exit(1);
+    }
   }
 }
 
-if (require.main === module && !process.env.VERCEL) {
+const isStandaloneNode =
+  typeof __dirname !== "undefined" &&
+  typeof globalThis.WebSocketPair === "undefined" &&
+  typeof require !== "undefined" &&
+  typeof module !== "undefined" &&
+  require.main === module &&
+  !(typeof process !== "undefined" && process.env && process.env.VERCEL);
+
+if (isStandaloneNode) {
   start();
 }
 

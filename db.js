@@ -5,7 +5,7 @@ let pgPool = null;
 let sqliteDb = null;
 let dbType = "none";
 
-const ROOT = __dirname;
+const ROOT = typeof __dirname !== "undefined" ? __dirname : "/";
 const DATA_DIR = path.join(ROOT, "data");
 const JSON_STORE_PATH = path.join(DATA_DIR, "autosponsor_store.json");
 
@@ -18,7 +18,16 @@ let jsonState = {
   timeline_decisions: {}
 };
 
+function isServerlessEdge() {
+  return Boolean(
+    typeof __dirname === "undefined" ||
+    process.env.CLOUDFLARE_WORKERS ||
+    typeof globalThis.WebSocketPair !== "undefined"
+  );
+}
+
 function loadJsonStore() {
+  if (isServerlessEdge()) return;
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     if (fs.existsSync(JSON_STORE_PATH)) {
@@ -33,6 +42,7 @@ function loadJsonStore() {
 }
 
 function saveJsonStore() {
+  if (isServerlessEdge()) return;
   try {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(JSON_STORE_PATH, JSON.stringify(jsonState, null, 2), "utf8");

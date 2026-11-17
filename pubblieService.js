@@ -1,4 +1,3 @@
-const https = require("https");
 const { isStandardPostFormat } = require("./postFilter");
 
 class PubblieService {
