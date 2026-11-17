@@ -67,50 +67,39 @@
       <!-- ============================================================== -->
       <aside class="sidebar-nav" id="mainNav">
         <div class="brand">
-          <div class="brand-badge">ADS</div>
-          <div class="brand-text">
-            <h1 class="brand-title">AutoSponsorAds</h1>
-            <span class="brand-subtitle">Meta Ads Engine</span>
-          </div>
+          <h1 class="brand-title">AutoSponsorAds</h1>
         </div>
 
-        <div class="sidebar-section-label">MENU PRINCIPALE</div>
         <nav class="nav-tabs" role="tablist" aria-label="Sezioni applicazione">
           <button class="nav-tab active" id="tabBtnAutomations" type="button" role="tab" aria-selected="true" data-tab="automationsView">
-            <span class="nav-tab-indicator"></span>
             <span class="nav-tab-label">Automazioni</span>
-            <span class="tab-badge" id="badgeActiveCount">0</span>
+            <span class="tab-count" id="badgeActiveCount">0</span>
           </button>
           <button class="nav-tab" id="tabBtnTimeline" type="button" role="tab" aria-selected="false" data-tab="timelineView">
-            <span class="nav-tab-indicator"></span>
             <span class="nav-tab-label">Timeline Flow</span>
-            <span class="tab-badge" id="badgeTimelineCount">0</span>
+            <span class="tab-count" id="badgeTimelineCount">0</span>
           </button>
           <button class="nav-tab" id="tabBtnManual" type="button" role="tab" aria-selected="false" data-tab="manualView">
-            <span class="nav-tab-indicator"></span>
             <span class="nav-tab-label">Sponsor Manuale</span>
           </button>
           <button class="nav-tab" id="tabBtnLogs" type="button" role="tab" aria-selected="false" data-tab="logsView">
-            <span class="nav-tab-indicator"></span>
-            <span class="nav-tab-label">Storico e Log</span>
+            <span class="nav-tab-label">Storico</span>
           </button>
           <button class="nav-tab" id="tabBtnGuide" type="button" role="tab" aria-selected="false" data-tab="guideView">
-            <span class="nav-tab-indicator"></span>
-            <span class="nav-tab-label">Setup Hosting</span>
+            <span class="nav-tab-label">Setup</span>
           </button>
         </nav>
 
         <div class="sidebar-actions">
-          <div class="sidebar-section-label">AZIONI RAPIDE</div>
           <button class="btn btn-primary btn-block" id="openNewAutoModalBtn" type="button">
-            <span>+ Nuova Automazione</span>
+            <span>Nuova Automazione</span>
           </button>
           <button class="btn btn-secondary btn-block" id="globalRunBtn" type="button" title="Avvia subito il controllo di tutte le automazioni">
             <span class="spinner" id="globalRunSpinner" hidden></span>
-            <span id="globalRunText">Esegui Tutto Ora</span>
+            <span id="globalRunText">Esegui Ora</span>
           </button>
-          <button class="btn btn-ghost btn-block" id="logoutBtn" type="button" title="Disconnettiti e blocca l'accesso al pannello">
-            Disconnetti Sessione
+          <button class="btn btn-ghost btn-block" id="logoutBtn" type="button">
+            Esci
           </button>
         </div>
       </aside>
@@ -132,21 +121,20 @@
         <section class="app-view active" id="automationsView" role="tabpanel" aria-labelledby="tabBtnAutomations">
           <div class="section-header">
             <div>
-              <span class="section-eyebrow">MOTORE DI SPONSORIZZAZIONE AUTOMATICA</span>
-              <h2>Elenco Regole di Monitoraggio</h2>
-              <p>I profili e le pagine configurati vengono controllati periodicamente. Vengono sponsorizzati esclusivamente i nuovi contenuti in formato POST pubblicati dopo la data di attivazione.</p>
+              <h2>Automazioni</h2>
+              <p>Controllo e sponsorizzazione automatica dei nuovi post ogni giorno alle 18:00.</p>
             </div>
             <div class="section-actions">
               <div class="search-box">
-                <input id="autoSearchInput" type="search" placeholder="Cerca regola, cliente o pagina...">
+                <input id="autoSearchInput" type="search" placeholder="Cerca regola o pagina...">
               </div>
-              <select id="autoFilterStatus" class="select-sm">
+              <select id="autoFilterStatus" class="select-sm" aria-label="Filtra per stato">
                 <option value="ALL">Tutti gli stati</option>
-                <option value="ACTIVE">Solo Attive</option>
-                <option value="PAUSED">In Pausa</option>
+                <option value="ACTIVE">Solo attive</option>
+                <option value="PAUSED">In pausa</option>
               </select>
               <button class="btn btn-primary btn-sm" id="emptyStateNewBtn" type="button">
-                + Crea Regola
+                Nuova Regola
               </button>
             </div>
           </div>
@@ -163,17 +151,16 @@
         <section class="app-view" id="timelineView" role="tabpanel" aria-labelledby="tabBtnTimeline" hidden>
           <div class="section-header timeline-top-header">
             <div>
-              <span class="section-eyebrow">PROGRAMMAZIONE E CONTROLLO PREVENTIVO</span>
-              <h2>Timeline Flow (Facebook e Instagram - Solo Formato POST)</h2>
-              <p>Visualizza in ordine cronologico i post programmati e pubblicati sui canali Facebook e Instagram. Sono esclusi automaticamente altri canali social e i formati diversi da POST (Storie, Reel, ecc.).</p>
+              <h2>Timeline Flow</h2>
+              <p>Post programmati e pubblicati su Facebook e Instagram (solo formato Post).</p>
             </div>
             <div class="section-actions">
               <button class="btn btn-secondary btn-sm" id="openPubblieModalBtn" type="button">
-                Configura Pubblie e Mappatura Canali
+                Configura Canali
               </button>
               <button class="btn btn-primary btn-sm" id="refreshTimelineBtn" type="button">
                 <span class="spinner" id="refreshTimelineSpinner" hidden></span>
-                <span>Aggiorna Timeline</span>
+                <span>Aggiorna</span>
               </button>
             </div>
           </div>
@@ -233,9 +220,8 @@
         <section class="app-view" id="manualView" role="tabpanel" aria-labelledby="tabBtnManual" hidden>
           <div class="section-header">
             <div>
-              <span class="section-eyebrow">CREAZIONE INSERZIONI IMMEDIATA</span>
-              <h2>Sponsorizzazione Manuale e Bulk (Solo POST)</h2>
-              <p>Seleziona uno o piu post gia pubblicati su una Pagina Facebook o un Profilo Instagram e crea immediatamente le inserzioni su Meta Ads.</p>
+              <h2>Sponsor Manuale</h2>
+              <p>Seleziona uno o piu post pubblicati e crea subito le inserzioni su Meta Ads.</p>
             </div>
           </div>
 
@@ -414,15 +400,14 @@
         <section class="app-view" id="guideView" role="tabpanel" aria-labelledby="tabBtnGuide" hidden>
           <div class="guide-layout">
             <!-- Card Rinnovo Token Meta 1-Click -->
-            <div class="card-panel guide-card" style="grid-column: 1 / -1; border-color: var(--neon);">
+            <div class="card-panel guide-card" style="grid-column: 1 / -1;">
               <div class="panel-header split">
                 <div>
-                  <span class="badge-pill">AUTENTICAZIONE DIRETTA META</span>
-                  <h3>Connessione Rapida Facebook Login (Rinnovo Token 60 Giorni)</h3>
+                  <h3>Connessione Facebook Login (Rinnovo Token 60 Giorni)</h3>
                   <p>Collega o rinnova il tuo token Meta Ads direttamente dal browser e salvalo nel database persistente.</p>
                 </div>
                 <a href="/auth/facebook" class="btn btn-primary" id="fbOAuthBtn">
-                  Connetti / Rinnova con Facebook
+                  Connetti con Facebook
                 </a>
               </div>
 
@@ -463,9 +448,8 @@
             </div>
 
             <div class="card-panel guide-card">
-              <span class="badge-pill">PASSO 1 - DEPLOY GRATUITO SU CLOUDFLARE WORKERS (SENZA SCADENZA)</span>
-              <h3>Cloudflare Workers + Neon PostgreSQL (Permanente)</h3>
-              <p>Il progetto include gia <code>wrangler.toml</code>, <code>worker.js</code> e <code>.assetsignore</code> preconfigurati per Cloudflare Workers con supporto Node.js (<code>nodejs_compat</code>).</p>
+              <h3>1. Deploy su Cloudflare Workers + Neon PostgreSQL</h3>
+              <p>Il progetto include <code>wrangler.toml</code>, <code>worker.js</code> e <code>.assetsignore</code> preconfigurati per Cloudflare Workers.</p>
 
               <ol class="guide-steps">
                 <li>
@@ -506,9 +490,8 @@
             </div>
 
             <div class="card-panel guide-card">
-              <span class="badge-pill">PASSO 2 - CRON NATIVO CLOUDFLARE O CRON-JOB.ORG</span>
-              <h3>Esecuzione Automatica Ogni Giorno alle 18:00</h3>
-              <p>Il file <code>wrangler.toml</code> attiva gia in automatico il <strong>Cron Trigger nativo di Cloudflare</strong> ogni giorno alle <strong>ore 18:00 (ora italiana)</strong>. In alternativa puoi usare anche cron-job.org:</p>
+              <h3>2. Esecuzione Automatica Ogni Giorno alle 18:00</h3>
+              <p>Il file <code>wrangler.toml</code> attiva in automatico il Cron Trigger nativo di Cloudflare ogni giorno alle <strong>ore 18:00 (ora italiana)</strong>.</p>
 
               <div class="cron-config-box">
                 <div class="form-group">
@@ -540,115 +523,23 @@
       </main>
 
       <!-- ============================================================== -->
-      <!-- RIGHT SIDEBAR: PLATFORM STATUS PANEL                           -->
+      <!-- RIGHT SIDEBAR: MINIMAL STATUS (ONLY NEXT CHECK & ACTIVE AUTOS) -->
       <!-- ============================================================== -->
-      <aside class="status-panel" id="statusPanel" aria-label="Stato della Piattaforma">
-        <div class="status-panel-header">
-          <span class="status-panel-eyebrow">TELEMETRIA OPERATIVA</span>
-          <h2 class="status-panel-title">Stato Piattaforma</h2>
-        </div>
-
+      <aside class="status-panel" id="statusPanel" aria-label="Riepilogo rapido">
         <div class="status-cards-stack">
+          <!-- Prossimo Check -->
+          <div class="kpi-card" id="kpiNextCheckCard">
+            <span class="kpi-label">Prossimo Check</span>
+            <strong class="kpi-value timer-display" id="kpiNextCheckTimer">--:--:--</strong>
+            <span class="kpi-sub" id="kpiNextCheckSub">Ogni giorno alle 18:00</span>
+          </div>
+
           <!-- Automazioni Attive -->
           <div class="kpi-card">
-            <div class="kpi-card-top">
-              <span class="kpi-label">Automazioni Attive</span>
-              <span class="status-indicator ok"></span>
-            </div>
+            <span class="kpi-label">Automazioni Attive</span>
             <div class="kpi-value-row">
               <strong class="kpi-value" id="kpiActiveAutomations">0</strong>
               <span class="kpi-sub" id="kpiTotalAutomations">su 0 totali</span>
-            </div>
-          </div>
-
-          <!-- Prossimo Check -->
-          <div class="kpi-card kpi-card-timer" id="kpiNextCheckCard">
-            <div class="kpi-card-top">
-              <span class="kpi-label">Prossimo Check</span>
-              <span class="status-indicator" id="kpiNextCheckIndicator"></span>
-            </div>
-            <div class="kpi-value-row">
-              <strong class="kpi-value timer-display" id="kpiNextCheckTimer">--:--:--</strong>
-            </div>
-            <span class="kpi-sub" id="kpiNextCheckSub">Inizializzazione...</span>
-
-            <!-- Hidden/synced header timer elements for full JS compatibility -->
-            <div class="header-next-check-badge" id="headerNextCheckBadge" hidden>
-              <span class="timer-pulse-dot" id="headerTimerDot"></span>
-              <strong class="timer-badge-value" id="headerCountdownTimer">--:--:--</strong>
-            </div>
-          </div>
-
-          <!-- Post Sponsorizzati in Auto -->
-          <div class="kpi-card">
-            <div class="kpi-card-top">
-              <span class="kpi-label">Post Sponsorizzati in Auto</span>
-            </div>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiProcessedPosts">0</strong>
-              <span class="kpi-sub">totali memorizzati</span>
-            </div>
-          </div>
-
-          <!-- Connessione Meta API -->
-          <div class="kpi-card">
-            <div class="kpi-card-top">
-              <span class="kpi-label">Connessione Meta API</span>
-              <span class="status-indicator" id="kpiMetaIndicator"></span>
-            </div>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiMetaStatus">Verifica...</strong>
-            </div>
-          </div>
-
-          <!-- Stato Database -->
-          <div class="kpi-card">
-            <div class="kpi-card-top">
-              <span class="kpi-label">Stato Database</span>
-              <span class="kpi-sub badge-tag" id="kpiDbStatus">Locale</span>
-            </div>
-            <div class="kpi-value-row">
-              <strong class="kpi-value" id="kpiDbType">SQLite</strong>
-            </div>
-          </div>
-
-          <!-- Stato Pubblie -->
-          <div class="kpi-card">
-            <div class="kpi-card-top">
-              <span class="kpi-label">Collegamento Pubblie</span>
-              <span class="status-indicator" id="pubblieStatusDot"></span>
-            </div>
-            <div class="kpi-value-row" id="pubblieStatusBadge">
-              <strong class="kpi-value kpi-value-sm" id="pubblieStatusText">Verifica Pubblie...</strong>
-            </div>
-          </div>
-
-          <!-- Riepilogo Timeline Flow -->
-          <div class="kpi-card status-summary-box">
-            <div class="kpi-card-top">
-              <span class="kpi-label">Metriche Timeline Flow</span>
-            </div>
-            <div class="status-mini-list">
-              <div class="status-mini-row">
-                <span>Post Programmati</span>
-                <strong id="tlStatUpcoming">0</strong>
-              </div>
-              <div class="status-mini-row">
-                <span>Inclusi nel Flow</span>
-                <strong class="text-neon" id="tlStatIncluded">0</strong>
-              </div>
-              <div class="status-mini-row">
-                <span>Esclusi dal Flow</span>
-                <strong id="tlStatExcluded">0</strong>
-              </div>
-              <div class="status-mini-row">
-                <span>Gia Sponsorizzati</span>
-                <strong id="tlStatSponsored">0</strong>
-              </div>
-              <div class="status-mini-row" hidden>
-                <span>Altri Social</span>
-                <strong id="tlStatExternal">0</strong>
-              </div>
             </div>
           </div>
         </div>
@@ -661,11 +552,8 @@
     <div class="modal-backdrop" id="automationModal" hidden>
       <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
         <div class="modal-header">
-          <div>
-            <span class="badge-pill">CONFIGURAZIONE REGOLA</span>
-            <h3 id="modalTitle">Nuova Regola di Automazione</h3>
-          </div>
-          <button class="modal-close" id="closeAutoModalBtn" type="button">X</button>
+          <h3 id="modalTitle">Nuova Regola di Automazione</h3>
+          <button class="modal-close" id="closeAutoModalBtn" type="button" aria-label="Chiudi">Chiudi</button>
         </div>
 
         <form id="automationForm" class="modal-body">
@@ -850,11 +738,8 @@
     <div class="modal-backdrop" id="pubblieModal" hidden>
       <div class="modal-dialog modal-lg" role="dialog" aria-modal="true" aria-labelledby="pubblieModalTitle">
         <div class="modal-header">
-          <div>
-            <span class="badge-pill">INTEGRAZIONE PUBBLIE &rarr; META ADS</span>
-            <h3 id="pubblieModalTitle">Configurazione Pubblie e Mappatura Canali</h3>
-          </div>
-          <button class="modal-close" id="closePubblieModalBtn" type="button">X</button>
+          <h3 id="pubblieModalTitle">Configurazione Pubblie e Mappatura Canali</h3>
+          <button class="modal-close" id="closePubblieModalBtn" type="button" aria-label="Chiudi">Chiudi</button>
         </div>
 
         <div class="modal-body">
@@ -1006,11 +891,8 @@
     <div class="modal-backdrop" id="postTargetModal" hidden>
       <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="postTargetModalTitle" style="max-width: 600px;">
         <div class="modal-header">
-          <div>
-            <span class="badge-pill">DESTINAZIONE PERSONALIZZATA</span>
-            <h3 id="postTargetModalTitle">Scegli Campagna e Gruppo Inserzioni per questo Post</h3>
-          </div>
-          <button class="modal-close" id="closePostTargetModalBtn" type="button">X</button>
+          <h3 id="postTargetModalTitle">Destinazione Meta Ads per questo Post</h3>
+          <button class="modal-close" id="closePostTargetModalBtn" type="button" aria-label="Chiudi">Chiudi</button>
         </div>
 
         <form id="postTargetForm" class="modal-body">

@@ -576,70 +576,53 @@ function renderAutomations() {
   }
 
   container.innerHTML = filtered.map((auto) => {
-    const isFb = auto.platform === "Facebook";
-    const statusDotClass = auto.last_run_status || "IDLE";
-    const scheduleText = `Ogni giorno alle 18:00 (${auto.ad_status || "ACTIVE"})`;
+    const platformName = auto.platform === "Facebook" ? "Facebook" : "Instagram";
+    const stateLabel = auto.enabled ? "Attiva" : "In pausa";
+    const filterInfo = auto.filter_keywords ? `Filtro: ${auto.filter_keywords}` : "Tutti i nuovi post";
 
     return `
       <article class="auto-list-row ${auto.enabled ? "" : "paused"}" data-id="${escapeHtml(auto.id)}">
-        <!-- Colonna 1: Stato, Piattaforma, Titolo e Sorgente -->
         <div class="auto-col-main">
-          <div class="auto-row-badges">
-            <span class="platform-tag ${isFb ? "fb" : "ig"}">${isFb ? "FACEBOOK" : "INSTAGRAM"}</span>
-            <span class="format-tag">SOLO POST</span>
-            <span class="badge-tag">${auto.enabled ? "ATTIVA" : "IN PAUSA"}</span>
-          </div>
           <h3 class="auto-title" title="${escapeHtml(auto.name)}">${escapeHtml(auto.name)}</h3>
-          <div class="auto-source-line" title="${escapeHtml(auto.source_name || auto.source_id)}">
-            Sorgente: <strong>${escapeHtml(auto.source_name || auto.source_id)}</strong>
+          <div class="meta-inline">
+            <span>${escapeHtml(platformName)}</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>${escapeHtml(auto.source_name || auto.source_id)}</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>${escapeHtml(stateLabel)}</span>
           </div>
         </div>
 
-        <!-- Colonna 2: Destinazione Meta Ads e Filtri -->
         <div class="auto-col-target">
-          <div class="auto-kv">
-            <span>Campagna:</span>
-            <strong title="${escapeHtml(auto.campaign_name || auto.campaign_id)}">${escapeHtml(auto.campaign_name || auto.campaign_id)}</strong>
+          <div class="auto-line-primary" title="${escapeHtml(auto.campaign_name || auto.campaign_id)}">
+            ${escapeHtml(auto.campaign_name || auto.campaign_id)} &rarr; ${escapeHtml(auto.adset_name || auto.adset_id)}
           </div>
-          <div class="auto-kv">
-            <span>Gruppo Ads:</span>
-            <strong title="${escapeHtml(auto.adset_name || auto.adset_id)}">${escapeHtml(auto.adset_name || auto.adset_id)}</strong>
-          </div>
-          <div class="auto-kv">
-            <span>Filtro Post:</span>
-            <strong>${auto.filter_keywords ? `<span class="keyword-badge">${escapeHtml(auto.filter_keywords)}</span>` : "Tutti i nuovi POST"}</strong>
+          <div class="meta-inline">
+            <span>${escapeHtml(filterInfo)}</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>Stato ad: ${escapeHtml(auto.ad_status || "ACTIVE")}</span>
           </div>
         </div>
 
-        <!-- Colonna 3: Frequenza, Non-Retroattivita e Ultimo Controllo -->
         <div class="auto-col-schedule">
-          <div class="auto-kv">
-            <span>Pianificazione:</span>
-            <strong>${escapeHtml(scheduleText)}</strong>
-          </div>
-          <div class="auto-kv">
-            <span>Attiva dal:</span>
-            <strong>${escapeHtml(formatDateTime(auto.start_time || auto.created_at))}</strong>
-          </div>
-          <div class="auto-check-line" title="${escapeHtml(auto.last_run_message || "")}">
-            <span class="dot-status ${escapeHtml(statusDotClass)}"></span>
+          <div class="auto-line-primary">Ogni giorno alle 18:00</div>
+          <div class="meta-inline">
             <span>Ultimo check: ${escapeHtml(formatDateTime(auto.last_checked_at))}</span>
           </div>
         </div>
 
-        <!-- Colonna 4: Switch Attivazione e Pulsanti Azione -->
         <div class="auto-col-actions">
           <label class="toggle-switch" title="Attiva o metti in pausa la regola">
-            <input type="checkbox" class="js-toggle-auto" data-id="${escapeHtml(auto.id)}" ${auto.enabled ? "checked" : ""}>
+            <input type="checkbox" class="js-toggle-auto" aria-label="Attiva ${escapeHtml(auto.name)}" data-id="${escapeHtml(auto.id)}" ${auto.enabled ? "checked" : ""}>
             <span class="toggle-slider"></span>
           </label>
           <button class="btn btn-secondary btn-xs js-run-auto" data-id="${escapeHtml(auto.id)}" type="button">
-            Controlla Ora
+            Controlla
           </button>
           <button class="btn btn-ghost btn-xs js-edit-auto" data-id="${escapeHtml(auto.id)}" type="button">
             Modifica
           </button>
-          <button class="btn btn-danger-ghost btn-xs js-delete-auto" data-id="${escapeHtml(auto.id)}" type="button" title="Elimina regola">
+          <button class="btn btn-danger-ghost btn-xs js-delete-auto" data-id="${escapeHtml(auto.id)}" type="button">
             Elimina
           </button>
         </div>
@@ -1504,9 +1487,9 @@ function renderTimeline() {
   container.innerHTML = Array.from(groups.entries()).map(([dayKey, dayItems]) => {
     let dayLabel = dayKey;
     if (dayKey === todayIso) {
-      dayLabel = "OGGI - " + new Date(dayKey).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+      dayLabel = "Oggi, " + new Date(dayKey).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
     } else if (dayKey === tomorrowIso) {
-      dayLabel = "DOMANI - " + new Date(dayKey).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
+      dayLabel = "Domani, " + new Date(dayKey).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long" });
     } else if (dayKey !== "Senza Data") {
       dayLabel = new Date(dayKey).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
     }
@@ -1514,8 +1497,8 @@ function renderTimeline() {
     return `
       <div class="timeline-day-group">
         <div class="timeline-day-header">
-          <span class="timeline-day-badge">${escapeHtml(dayLabel)}</span>
-          <span class="timeline-day-count">${dayItems.length} POST META</span>
+          <span class="timeline-day-title">${escapeHtml(dayLabel)}</span>
+          <span class="timeline-day-count">${dayItems.length} post</span>
         </div>
         <div class="timeline-day-list">
           ${dayItems.map((item) => renderTimelineRow(item)).join("")}
@@ -1568,24 +1551,18 @@ function renderTimeline() {
 }
 
 function renderTimelineRow(item) {
-  const isIg = item.platform === "Instagram";
+  const platformName = item.platform === "Instagram" ? "Instagram" : "Facebook";
   const statusClass = item.flowStatus === "SPONSORED"
     ? "status-sponsored"
     : item.flowStatus === "EXCLUDED"
       ? "status-excluded"
       : "status-included";
 
-  const statusPillClass = item.flowStatus === "SPONSORED"
-    ? "sponsored"
-    : item.flowStatus === "EXCLUDED"
-      ? "excluded"
-      : "included";
-
   const statusLabel = item.flowStatus === "SPONSORED"
-    ? "SPONSORIZZATO"
+    ? "Sponsorizzato"
     : item.flowStatus === "EXCLUDED"
-      ? "ESCLUSO DAL FLOW"
-      : "INCLUSO NEL FLOW";
+      ? "Escluso dal flow"
+      : "Incluso nel flow";
 
   const target = item.customTarget || item.mapping;
   const imgUrl = item.images?.[0] || "";
@@ -1593,69 +1570,63 @@ function renderTimelineRow(item) {
   let targetHtml = "";
   if (target) {
     targetHtml = `
-      <div class="tl-target-header">
-        <span class="tl-target-title">${item.customTarget ? "TARGET PERSONALIZZATO" : "DESTINAZIONE META ADS"}</span>
+      <div class="auto-line-primary" title="${escapeHtml(target.campaign_name || target.campaign_id)}">
+        ${escapeHtml(target.campaign_name || target.campaign_id)} &rarr; ${escapeHtml(target.adset_name || target.adset_id)}
       </div>
-      <div class="auto-kv"><span>Account:</span> <strong>${escapeHtml(target.ad_account_name || target.ad_account_id)}</strong></div>
-      <div class="auto-kv"><span>Campagna:</span> <strong>${escapeHtml(target.campaign_name || target.campaign_id)}</strong></div>
-      <div class="auto-kv"><span>Gruppo Ads:</span> <strong>${escapeHtml(target.adset_name || target.adset_id)}</strong></div>
-      ${target.cta_link ? `<div class="auto-kv"><span>URL CTA:</span> <strong>${escapeHtml(target.cta_link)}</strong></div>` : ""}
+      <div class="meta-inline">
+        <span>${escapeHtml(target.ad_account_name || target.ad_account_id)}</span>
+        ${item.customTarget ? `<span aria-hidden="true">&middot;</span><span>Target personalizzato</span>` : ""}
+      </div>
     `;
   } else {
     targetHtml = `
       <div class="tl-target-unmapped">
-        Canale non ancora associato a una campagna Meta Ads.
-        <div style="margin-top: 6px;">
-          <button class="btn btn-secondary btn-xs js-tl-open-mapping" type="button">Configura Mappatura Canale</button>
-        </div>
+        <span>Canale non mappato</span>
+        <button class="btn btn-secondary btn-xs js-tl-open-mapping" type="button">Associa canale</button>
       </div>
     `;
   }
 
   return `
     <article class="tl-post-row ${statusClass}" data-id="${escapeHtml(item.id)}">
-      <!-- Colonna 1: Orario, Piattaforma, Formato POST e Canale -->
       <div class="tl-col-meta">
         <div class="tl-time-box">
           <span class="tl-time-val">${escapeHtml(formatTimeShort(item.effectiveDate))}</span>
-          <span class="tl-pub-state">${item.isFuture ? "PROGRAMMATO" : "PUBBLICATO"}</span>
-        </div>
-        <div class="auto-row-badges">
-          <span class="platform-tag ${isIg ? "ig" : "fb"}">${isIg ? "INSTAGRAM" : "FACEBOOK"}</span>
-          <span class="format-tag">POST</span>
+          <span class="meta-inline">${item.isFuture ? "Programmato" : "Pubblicato"}</span>
         </div>
         <div class="tl-channel-title" title="${escapeHtml(item.channelName)}">${escapeHtml(item.channelName)}</div>
-        <div class="tl-project-sub" title="${escapeHtml(item.projectName)}">${escapeHtml(item.projectName)}</div>
+        <div class="meta-inline">
+          <span>${escapeHtml(platformName)}</span>
+          <span aria-hidden="true">&middot;</span>
+          <span>${escapeHtml(item.projectName)}</span>
+        </div>
       </div>
 
-      <!-- Colonna 2: Anteprima Media e Testo del Post -->
       <div class="tl-col-content">
         <div class="tl-thumb">
           ${imgUrl
-            ? `<img src="${escapeHtml(imgUrl)}" alt="Anteprima post" loading="lazy">`
-            : `<span class="tl-thumb-placeholder">POST</span>`}
+            ? `<img src="${escapeHtml(imgUrl)}" alt="Anteprima post" loading="lazy" referrerpolicy="no-referrer">`
+            : `<span class="tl-thumb-placeholder">Post</span>`}
         </div>
         <div class="tl-text-wrap">
           <p class="tl-post-copy" title="${escapeHtml(item.text || "")}">
-            ${escapeHtml(item.text || "(Post senza didascalia testuale)")}
+            ${escapeHtml(item.text || "(Post senza testo)")}
           </p>
-          <span class="tl-post-id">ID: ${escapeHtml(String(item.rawId || item.id).slice(-10))}</span>
         </div>
       </div>
 
-      <!-- Colonna 3: Destinazione Meta Ads -->
       <div class="tl-col-target">
         ${targetHtml}
       </div>
 
       <!-- Colonna 4: Stato nel Flow e Azioni -->
       <div class="tl-col-actions">
-        <span class="tl-flow-status-pill ${statusPillClass}">${statusLabel}</span>
+        <span class="tl-flow-status-label ${statusClass}">${statusLabel}</span>
         ${item.flowStatus !== "SPONSORED" ? `
           <div class="tl-action-btns">
             ${item.flowStatus === "INCLUDED"
-              ? `<button class="btn btn-ghost btn-xs js-tl-toggle" data-id="${escapeHtml(item.id)}" data-next="EXCLUDED" type="button">Escludi dal Flow</button>`
-              : `<button class="btn btn-primary btn-xs js-tl-toggle" data-id="${escapeHtml(item.id)}" data-next="INCLUDED" type="button">Includi nel Flow</button>`
+              ? `<button class="btn btn-ghost btn-xs js-tl-toggle" data-id="${escapeHtml(item.id)}" data-next="EXCLUDED" type="button">Escludi</button>`
+              : `<button class="btn btn-primary btn-xs js-tl-toggle" data-id="${escapeHtml(item.id)}" data-next="INCLUDED" type="button">Includi</button>`
             }
             <button class="btn btn-secondary btn-xs js-tl-custom-target" data-id="${escapeHtml(item.id)}" type="button" title="Scegli Campagna e Gruppo Inserzioni per questo post">
               Target Ads
@@ -1665,7 +1636,7 @@ function renderTimelineRow(item) {
             Sponsorizza Ora
           </button>
         ` : `
-          <div style="text-align: center; font-size: 0.74rem; color: var(--neon); font-family: 'JetBrains Mono', monospace;">
+          <div class="meta-inline">
             Ad ID: ${escapeHtml(item.adId || "Creata")}
           </div>
         `}
