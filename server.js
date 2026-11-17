@@ -1455,7 +1455,8 @@ async function handleApi(req, res, url) {
 async function handleOAuth(req, res, url) {
   const appId = (env.META_APP_ID || "").trim();
   const appSecret = (env.META_APP_SECRET || "").trim();
-  const redirectUri = env.META_LOGIN_REDIRECT_URI || `http://${req.headers.host}/auth/callback`;
+  const proto = isHttpsRequest(req) ? "https" : "http";
+  const redirectUri = env.META_LOGIN_REDIRECT_URI || `${proto}://${req.headers.host}/auth/callback`;
 
   if (!appId || !appSecret) {
     if (url.pathname.startsWith("/auth/")) {
