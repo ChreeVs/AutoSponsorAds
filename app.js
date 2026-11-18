@@ -1027,8 +1027,37 @@ function bindTimelineEvents() {
     }
   });
 
+  $("#autoMapPubblieBtn")?.addEventListener("click", async () => {
+    const btn = $("#autoMapPubblieBtn");
+    if (!btn) return;
+    btn.disabled = true;
+    const origText = btn.textContent;
+    btn.textContent = "Sincronizzazione...";
+    try {
+      const res = await api("/api/pubblie/auto-map", { method: "POST", body: JSON.stringify({}) });
+      const count = res.syncedCount || 0;
+      showBanner(
+        count > 0
+          ? `Sincronizzate ${count} nuove mappature canali Pubblie dalle regole di Automazione Meta!`
+          : "Tutti i canali Facebook e Instagram dei progetti attivi risultano gia mappati.",
+        "success"
+      );
+      await loadPubblieStatusAndData();
+      await loadTimelineFeed();
+    } catch (err) {
+      showBanner(err.message, "error");
+    } finally {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
+  });
+
   $("#mapPubblieProject")?.addEventListener("change", (e) => {
     loadProjectChannelsForMapping(e.target.value);
+  });
+
+  $("#mapPubblieChannel")?.addEventListener("change", () => {
+    autoSuggestMetaTargetForSelectedChannel();
   });
 
   $("#mapMetaAdAccount")?.addEventListener("change", (e) => {
@@ -1177,20 +1206,6 @@ async function loadPubblieStatusAndData() {
     const st = await api("/api/pubblie/status");
     state.pubblieStatus = st;
 
-    const dot = $("#pubblieStatusDot");
-    const txt = $("#pubblieStatusText");
-
-    if (st.configured && st.connection?.ok) {
-      if (dot) dot.className = "status-indicator ok";
-      if (txt) txt.textContent = "Connesso";
-    } else if (st.configured) {
-      if (dot) dot.className = "status-indicator err";
-      if (txt) txt.textContent = "Errore API Key";
-    } else {
-      if (dot) dot.className = "status-indicator";
-      if (txt) txt.textContent = "Non configurato";
-    }
-
     const [projRes, mapRes] = await Promise.all([
       st.configured ? api("/api/pubblie/projects").catch(() => ({ data: [], archivedProjectIds: [] })) : Promise.resolve({ data: [], archivedProjectIds: [] }),
       api("/api/pubblie/mappings").catch(() => ({ data: [] }))
@@ -1199,6 +1214,51 @@ async function loadPubblieStatusAndData() {
     state.pubblieProjects = projRes.data || [];
     state.archivedProjectIds = projRes.archivedProjectIds || [];
     state.pubblieMappings = mapRes.data || [];
+
+    const activeProjectsCount = state.pubblieProjects.filter((p) => !state.archivedProjectIds.includes(p.id)).length;
+    const mappingsCount = state.pubblieMappings.length;
+
+    const dot = $("#pubblieStatusDot");
+    const txt = $("#pubblieStatusText");
+    const tlBadge = $("#tlPubblieConnBadge");
+    const modalDot = $("#pubblieModalDot");
+    const modalState = $("#pubblieModalConnState");
+    const modalMeta = $("#pubblieModalConnMeta");
+
+    if (st.configured && st.connection?.ok) {
+      const userName = st.connection.user?.name || "Account Pubblie";
+      if (dot) dot.className = "status-indicator ok";
+      if (txt) txt.textContent = "Connesso";
+      if (tlBadge) {
+        tlBadge.className = "tl-pubblie-status-pill connected";
+        tlBadge.textContent = `Pubblie Connesso · ${activeProjectsCount} progetti attivi · ${mappingsCount} canali mappati`;
+      }
+      if (modalDot) modalDot.className = "status-indicator ok";
+      if (modalState) modalState.textContent = `Connesso a Pubblie (${userName})`;
+      if (modalMeta) {
+        modalMeta.textContent = `Chiave attiva: ${st.keyPreview || "Configurata"} · ${activeProjectsCount} progetti visibili su ${state.pubblieProjects.length} totali · ${mappingsCount} canali Meta mappati`;
+      }
+    } else if (st.configured) {
+      if (dot) dot.className = "status-indicator err";
+      if (txt) txt.textContent = "Errore API Key";
+      if (tlBadge) {
+        tlBadge.className = "tl-pubblie-status-pill error";
+        tlBadge.textContent = "Pubblie: Errore verifica API Key";
+      }
+      if (modalDot) modalDot.className = "status-indicator err";
+      if (modalState) modalState.textContent = "Errore di connessione a Pubblie";
+      if (modalMeta) modalMeta.textContent = st.connection?.error || "Verifica che la chiave API Pubblie sia valida.";
+    } else {
+      if (dot) dot.className = "status-indicator";
+      if (txt) txt.textContent = "Non configurato";
+      if (tlBadge) {
+        tlBadge.className = "tl-pubblie-status-pill";
+        tlBadge.textContent = "Pubblie non collegato";
+      }
+      if (modalDot) modalDot.className = "status-indicator";
+      if (modalState) modalState.textContent = "Pubblie non ancora collegato";
+      if (modalMeta) modalMeta.textContent = "Inserisci la tua API Key qui sotto per importare il calendario editoriale.";
+    }
 
     populatePubblieProjectSelectors();
     renderPubblieMappingsTable();
@@ -1218,7 +1278,9 @@ function populatePubblieProjectSelectors() {
     const curr = filterSel.value;
     filterSel.innerHTML = `<option value="">Tutti i Progetti Attivi (${activeProjects.length})</option>` +
       activeProjects.map((p) => `<option value="${escapeHtml(p.id)}">${escapeHtml(p.name)}${p.teamName ? ` (${escapeHtml(p.teamName)})` : ""}</option>`).join("");
-    if (curr) filterSel.value = curr;
+    if (curr && activeProjects.some((p) => p.id === curr)) {
+      filterSel.value = curr;
+    }
   }
 
   if (mapSel) {
@@ -1235,32 +1297,88 @@ function populatePubblieProjectSelectors() {
   }
 }
 
-async function loadProjectChannelsForMapping(projectId) {
+async function loadProjectChannelsForMapping(projectId, preferredChannelId = "") {
   const chSel = $("#mapPubblieChannel");
+  const hintEl = $("#mapPubblieChannelHint");
   if (!chSel || !projectId) return;
-  chSel.innerHTML = `<option value="">Caricamento canali...</option>`;
+  chSel.innerHTML = `<option value="">Caricamento canali Meta...</option>`;
   try {
     const res = await api(`/api/pubblie/projects/${encodeURIComponent(projectId)}/channels`);
     const allChannels = res.data || [];
-    // Filtra solo canali Facebook e Instagram per le mappature Meta Ads
+    // Filtra rigorosamente solo canali Facebook e Instagram (mai mostrare Twitter, TikTok, LinkedIn, GMB, YouTube)
     const metaChannels = allChannels.filter((c) => {
+      if (typeof c.isMetaCompatible === "boolean") return c.isMetaCompatible;
       const prov = (c.provider || "").toLowerCase();
       return prov.includes("insta") || prov.includes("face") || prov === "ig" || prov === "fb";
     });
-    const channels = metaChannels.length ? metaChannels : allChannels;
-    if (!channels.length) {
-      chSel.innerHTML = `<option value="">Nessun canale Meta collegato in questo progetto</option>`;
+    const hiddenNonMetaCount = Math.max(0, allChannels.length - metaChannels.length);
+
+    if (hintEl) {
+      hintEl.textContent = metaChannels.length
+        ? `Canali Meta disponibili: ${metaChannels.length}${hiddenNonMetaCount > 0 ? ` (${hiddenNonMetaCount} canali non-Meta nascosti in automatico)` : ""}.`
+        : "Nessun canale Facebook o Instagram trovato in questo progetto Pubblie.";
+    }
+
+    if (!metaChannels.length) {
+      chSel.innerHTML = `<option value="">Nessun canale Facebook o Instagram presente nel progetto</option>`;
       return;
     }
-    chSel.innerHTML = channels.map((c) =>
-      `<option value="${escapeHtml(c.id)}" data-name="${escapeHtml(c.name)}" data-provider="${escapeHtml(c.provider)}">[${escapeHtml((c.provider || "SOCIAL").toUpperCase())}] ${escapeHtml(c.name)}</option>`
-    ).join("");
+
+    chSel.innerHTML = metaChannels.map((c) => {
+      const platLabel = (c.metaPlatform || (c.provider?.includes("insta") ? "Instagram" : "Facebook")).toUpperCase();
+      const userSuffix = c.accountUsername ? ` (@${c.accountUsername})` : "";
+      return `<option value="${escapeHtml(c.id)}" data-name="${escapeHtml(`${platLabel}: ${c.name}${userSuffix}`)}" data-provider="${escapeHtml((c.metaPlatform || c.provider || "meta").toLowerCase())}">[${escapeHtml(platLabel)}] ${escapeHtml(c.name)}${escapeHtml(userSuffix)}</option>`;
+    }).join("");
+
+    if (preferredChannelId && metaChannels.some((c) => c.id === preferredChannelId)) {
+      chSel.value = preferredChannelId;
+    }
+
+    await autoSuggestMetaTargetForSelectedChannel();
   } catch {
     chSel.innerHTML = `<option value="">Errore caricamento canali</option>`;
   }
 }
 
-async function onMapMetaAccountChange(accountId) {
+async function autoSuggestMetaTargetForSelectedChannel() {
+  const projectId = $("#mapPubblieProject")?.value || "";
+  const channelId = $("#mapPubblieChannel")?.value || "";
+  const channelOpt = $("#mapPubblieChannel")?.selectedOptions?.[0];
+  const provider = (channelOpt?.dataset?.provider || "").toLowerCase();
+  if (!projectId || !channelId) return;
+
+  // 1. Check if there is already a saved mapping for this channel
+  const existing = state.pubblieMappings.find((m) => m.project_id === projectId && m.channel_id === channelId);
+  if (existing) {
+    if ($("#mapMetaAdAccount") && existing.ad_account_id) {
+      $("#mapMetaAdAccount").value = existing.ad_account_id;
+      await onMapMetaAccountChange(existing.ad_account_id, existing.campaign_id, existing.adset_id);
+    }
+    if ($("#mapMetaAutomation")) $("#mapMetaAutomation").value = existing.automation_id || "";
+    if ($("#mapCtaLink")) $("#mapCtaLink").value = existing.cta_link || "";
+    if ($("#mapCtaType") && existing.cta_type) $("#mapCtaType").value = existing.cta_type;
+    if ($("#mapAutoSponsor")) $("#mapAutoSponsor").checked = Boolean(existing.auto_sponsor_on_publish);
+    return;
+  }
+
+  // 2. Otherwise suggest from matching Meta Automation
+  const projObj = state.pubblieProjects.find((p) => p.id === projectId);
+  const projName = (projObj?.name || "").toLowerCase().trim();
+  const targetPlat = provider.includes("insta") ? "instagram" : "facebook";
+  const matchedAuto = state.automations.find((a) => {
+    if ((a.platform || "").toLowerCase() !== targetPlat) return false;
+    const hay = `${a.name || ""} ${a.source_name || ""} ${a.campaign_name || ""}`.toLowerCase();
+    return projName && hay.includes(projName);
+  });
+
+  if (matchedAuto && $("#mapMetaAdAccount")) {
+    $("#mapMetaAdAccount").value = matchedAuto.ad_account_id;
+    await onMapMetaAccountChange(matchedAuto.ad_account_id, matchedAuto.campaign_id, matchedAuto.adset_id);
+    if ($("#mapMetaAutomation")) $("#mapMetaAutomation").value = matchedAuto.id;
+  }
+}
+
+async function onMapMetaAccountChange(accountId, preferredCampaignId = null, preferredAdsetId = null) {
   const campSel = $("#mapMetaCampaign");
   if (!campSel || !accountId) return;
   campSel.innerHTML = `<option value="">Caricamento...</option>`;
@@ -1269,15 +1387,19 @@ async function onMapMetaAccountChange(accountId) {
     campSel.innerHTML = campaigns.length
       ? campaigns.map((c) => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join("")
       : `<option value="">Nessuna campagna</option>`;
-    if (campaigns[0]?.id) {
-      await onMapMetaCampaignChange(accountId, campaigns[0].id);
+    if (preferredCampaignId && campaigns.some((c) => c.id === preferredCampaignId)) {
+      campSel.value = preferredCampaignId;
+    }
+    const chosenCampId = campSel.value || campaigns[0]?.id;
+    if (chosenCampId) {
+      await onMapMetaCampaignChange(accountId, chosenCampId, preferredAdsetId);
     }
   } catch {
     campSel.innerHTML = `<option value="">Errore campagne</option>`;
   }
 }
 
-async function onMapMetaCampaignChange(accountId, campaignId) {
+async function onMapMetaCampaignChange(accountId, campaignId, preferredAdsetId = null) {
   const adsetSel = $("#mapMetaAdset");
   if (!adsetSel || !accountId || !campaignId) return;
   adsetSel.innerHTML = `<option value="">Caricamento...</option>`;
@@ -1286,6 +1408,9 @@ async function onMapMetaCampaignChange(accountId, campaignId) {
     adsetSel.innerHTML = adsets.length
       ? adsets.map((a) => `<option value="${escapeHtml(a.id)}">${escapeHtml(a.name)}</option>`).join("")
       : `<option value="">Nessun gruppo inserzioni</option>`;
+    if (preferredAdsetId && adsets.some((a) => a.id === preferredAdsetId)) {
+      adsetSel.value = preferredAdsetId;
+    }
   } catch {
     adsetSel.innerHTML = `<option value="">Errore AdSet</option>`;
   }
@@ -1303,7 +1428,7 @@ function renderPubblieMappingsTable() {
   if (!tbody) return;
 
   if (!state.pubblieMappings.length) {
-    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--text-muted);">Nessuna mappatura configurata.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color: var(--text-muted);">Nessuna mappatura configurata. Clicca su "Sincronizza Canali da Automazioni" sopra per configurarle in 1 click.</td></tr>`;
     return;
   }
 
@@ -1388,6 +1513,7 @@ function renderPubblieProjectsVisibilityTable() {
         state.archivedProjectIds = next;
         populatePubblieProjectSelectors();
         renderPubblieProjectsVisibilityTable();
+        await loadPubblieStatusAndData();
         await loadTimelineFeed();
       } catch (err) {
         showBanner(err.message, "error");
@@ -1396,9 +1522,15 @@ function renderPubblieProjectsVisibilityTable() {
   });
 }
 
-function openPubblieModal() {
+function openPubblieModal(projectId = "", channelId = "") {
   const modal = $("#pubblieModal");
   if (modal) modal.hidden = false;
+  const cleanProjId = typeof projectId === "string" ? projectId.trim() : "";
+  const cleanChanId = typeof channelId === "string" ? channelId.trim() : "";
+  if (cleanProjId && $("#mapPubblieProject")) {
+    $("#mapPubblieProject").value = cleanProjId;
+    loadProjectChannelsForMapping(cleanProjId, cleanChanId);
+  }
 }
 
 function closePubblieModal() {
@@ -1437,15 +1569,22 @@ async function loadTimelineFeed() {
 }
 
 function renderTimelineStats() {
-  const st = state.timelineStats;
+  const st = state.timelineStats || {};
   const badge = $("#badgeTimelineCount");
-  if (badge) badge.textContent = String(st.upcomingCount || st.total || 0);
+  if (badge) badge.textContent = String(st.total || st.upcomingCount || 0);
 
+  if ($("#tlStatTotal")) $("#tlStatTotal").textContent = String(st.total ?? state.timelineItems.length ?? 0);
   if ($("#tlStatUpcoming")) $("#tlStatUpcoming").textContent = String(st.upcomingCount || 0);
   if ($("#tlStatIncluded")) $("#tlStatIncluded").textContent = String(st.includedCount || 0);
   if ($("#tlStatExcluded")) $("#tlStatExcluded").textContent = String(st.excludedCount || 0);
   if ($("#tlStatSponsored")) $("#tlStatSponsored").textContent = String(st.sponsoredCount || 0);
-  if ($("#tlStatExternal")) $("#tlStatExternal").textContent = "0";
+}
+
+function stripAnyEmoji(str = "") {
+  return String(str || "")
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
 }
 
 function renderTimeline() {
@@ -1454,7 +1593,6 @@ function renderTimeline() {
 
   const search = ($("#tlSearchInput")?.value || "").toLowerCase().trim();
   const filtered = state.timelineItems.filter((item) => {
-    // Sicurezza extra lato client: mostra solo Facebook e Instagram in formato POST
     const plat = (item.platform || "").toLowerCase();
     if (plat !== "facebook" && plat !== "instagram") return false;
     if (!search) return true;
@@ -1465,8 +1603,8 @@ function renderTimeline() {
   if (!filtered.length) {
     container.innerHTML = `
       <div class="empty-box">
-        <h3 style="margin: 0 0 6px; color: var(--text-primary);">Nessun POST Facebook o Instagram in programma per i filtri selezionati</h3>
-        <p style="margin: 0;">Verifica la configurazione di Pubblie o cambia i filtri sopra. Ricorda che vengono mostrati esclusivamente i post in formato POST su canali Facebook e Instagram.</p>
+        <h3 style="margin: 0 0 6px; color: var(--text-primary);">Nessun Post Facebook o Instagram in programma per i filtri selezionati</h3>
+        <p style="margin: 0;">Tutti i contenuti in formato Storia, Reel o appartenenti a canali non-Meta vengono nascosti automaticamente. Cambia filtro o verifica i progetti attivi in Collegamento Pubblie.</p>
       </div>
     `;
     return;
@@ -1494,11 +1632,16 @@ function renderTimeline() {
       dayLabel = new Date(dayKey).toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
     }
 
+    const dayIncluded = dayItems.filter((x) => x.flowStatus === "INCLUDED").length;
+
     return `
       <div class="timeline-day-group">
         <div class="timeline-day-header">
-          <span class="timeline-day-title">${escapeHtml(dayLabel)}</span>
-          <span class="timeline-day-count">${dayItems.length} post</span>
+          <div class="timeline-day-left">
+            <span class="timeline-day-dot"></span>
+            <span class="timeline-day-title">${escapeHtml(dayLabel)}</span>
+          </div>
+          <span class="timeline-day-count">${dayItems.length} post Feed · ${dayIncluded} inclusi nel Flow</span>
         </div>
         <div class="timeline-day-list">
           ${dayItems.map((item) => renderTimelineRow(item)).join("")}
@@ -1542,7 +1685,10 @@ function renderTimeline() {
   });
 
   container.querySelectorAll(".js-tl-open-mapping").forEach((btn) => {
-    btn.addEventListener("click", () => openPubblieModal());
+    btn.addEventListener("click", () => {
+      const item = state.timelineItems.find((i) => i.id === btn.dataset.id);
+      openPubblieModal(item?.projectId || "", item?.channelId || "");
+    });
   });
 
   container.querySelectorAll(".js-tl-sponsor-now").forEach((btn) => {
@@ -1554,12 +1700,14 @@ function getThumbUrl(rawUrl) {
   if (!rawUrl || typeof rawUrl !== "string") return "";
   const trimmed = rawUrl.trim();
   if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return trimmed;
-  // Usa proxy CDN globale wsrv.nl per comprimere le anteprime a 96x96 WebP (~4KB invece di diversi MB)
   return `https://wsrv.nl/?url=${encodeURIComponent(trimmed)}&w=96&h=96&fit=cover&q=70&output=webp`;
 }
 
 function renderTimelineRow(item) {
-  const platformName = item.platform === "Instagram" ? "Instagram" : "Facebook";
+  const isIg = item.platform === "Instagram";
+  const platformName = isIg ? "Instagram" : "Facebook";
+  const platformClass = isIg ? "plat-ig" : "plat-fb";
+
   const statusClass = item.flowStatus === "SPONSORED"
     ? "status-sponsored"
     : item.flowStatus === "EXCLUDED"
@@ -1569,29 +1717,39 @@ function renderTimelineRow(item) {
   const statusLabel = item.flowStatus === "SPONSORED"
     ? "Sponsorizzato"
     : item.flowStatus === "EXCLUDED"
-      ? "Escluso dal flow"
-      : "Incluso nel flow";
+      ? "Escluso dal Flow"
+      : "Incluso nel Flow";
+
+  const pubStateLabel = item.isFuture ? "Programmato" : "Pubblicato";
+  const pubStateClass = item.isFuture ? "pub-scheduled" : "pub-live";
 
   const target = item.customTarget || item.mapping;
   const imgUrl = item.images?.[0] || "";
   const thumbUrl = getThumbUrl(imgUrl);
+  const cleanCopy = stripAnyEmoji(item.text || "") || "(Post senza testo)";
 
   let targetHtml = "";
   if (target) {
     targetHtml = `
+      <div class="tl-target-header">
+        <span class="tl-target-label">Destinazione Meta Ads</span>
+        ${item.customTarget ? `<span class="tl-target-custom-tag">Personalizzato</span>` : ""}
+      </div>
       <div class="auto-line-primary" title="${escapeHtml(target.campaign_name || target.campaign_id)}">
-        ${escapeHtml(target.campaign_name || target.campaign_id)} &rarr; ${escapeHtml(target.adset_name || target.adset_id)}
+        ${escapeHtml(target.campaign_name || target.campaign_id)}
       </div>
       <div class="meta-inline">
-        <span>${escapeHtml(target.ad_account_name || target.ad_account_id)}</span>
-        ${item.customTarget ? `<span aria-hidden="true">&middot;</span><span>Target personalizzato</span>` : ""}
+        <span>AdSet: <strong>${escapeHtml(target.adset_name || target.adset_id)}</strong></span>
       </div>
     `;
   } else {
     targetHtml = `
       <div class="tl-target-unmapped">
-        <span>Canale non mappato</span>
-        <button class="btn btn-secondary btn-xs js-tl-open-mapping" type="button">Associa canale</button>
+        <div>
+          <strong>Canale non associato</strong>
+          <div class="meta-inline">Seleziona campagna e AdSet per questo canale</div>
+        </div>
+        <button class="btn btn-secondary btn-xs js-tl-open-mapping" data-id="${escapeHtml(item.id)}" type="button">Associa Canale</button>
       </div>
     `;
   }
@@ -1601,25 +1759,25 @@ function renderTimelineRow(item) {
       <div class="tl-col-meta">
         <div class="tl-time-box">
           <span class="tl-time-val">${escapeHtml(formatTimeShort(item.effectiveDate))}</span>
-          <span class="meta-inline">${item.isFuture ? "Programmato" : "Pubblicato"}</span>
+          <span class="tl-pub-badge ${pubStateClass}">${pubStateLabel}</span>
+          <span class="tl-plat-tag ${platformClass}">${escapeHtml(platformName)}</span>
         </div>
         <div class="tl-channel-title" title="${escapeHtml(item.channelName)}">${escapeHtml(item.channelName)}</div>
         <div class="meta-inline">
-          <span>${escapeHtml(platformName)}</span>
-          <span aria-hidden="true">&middot;</span>
           <span>${escapeHtml(item.projectName)}</span>
+          ${item.link ? `<span aria-hidden="true">&middot;</span><a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer" class="tl-post-ext-link">Vedi post</a>` : ""}
         </div>
       </div>
 
       <div class="tl-col-content">
-        <div class="tl-thumb">
+        <div class="tl-thumb" style="width:48px;height:48px;min-width:48px;max-width:48px;overflow:hidden;border-radius:6px;flex-shrink:0;">
           ${imgUrl
-            ? `<img src="${escapeHtml(thumbUrl)}" data-orig="${escapeHtml(imgUrl)}" width="48" height="48" alt="Anteprima" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="if(this.dataset.orig && this.src !== this.dataset.orig){this.src = this.dataset.orig;}else{this.style.display='none';}">`
-            : `<span class="tl-thumb-placeholder">Post</span>`}
+            ? `<img src="${escapeHtml(thumbUrl)}" data-orig="${escapeHtml(imgUrl)}" width="48" height="48" style="width:48px;height:48px;min-width:48px;max-width:48px;object-fit:cover;display:block;" alt="Anteprima" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="if(this.dataset.orig && this.src !== this.dataset.orig){this.src = this.dataset.orig;}else{this.style.display='none';}">`
+            : `<span class="tl-thumb-placeholder">POST</span>`}
         </div>
         <div class="tl-text-wrap">
-          <p class="tl-post-copy" title="${escapeHtml(item.text || "")}">
-            ${escapeHtml(item.text || "(Post senza testo)")}
+          <p class="tl-post-copy" title="${escapeHtml(cleanCopy)}">
+            ${escapeHtml(cleanCopy)}
           </p>
         </div>
       </div>
@@ -1628,7 +1786,6 @@ function renderTimelineRow(item) {
         ${targetHtml}
       </div>
 
-      <!-- Colonna 4: Stato nel Flow e Azioni -->
       <div class="tl-col-actions">
         <span class="tl-flow-status-label ${statusClass}">${statusLabel}</span>
         ${item.flowStatus !== "SPONSORED" ? `
@@ -1641,12 +1798,16 @@ function renderTimelineRow(item) {
               Target Ads
             </button>
           </div>
-          <button class="btn btn-secondary btn-xs btn-block js-tl-sponsor-now" data-id="${escapeHtml(item.id)}" type="button">
-            Sponsorizza Ora
-          </button>
+          ${!item.isFuture ? `
+            <button class="btn btn-primary btn-xs btn-block js-tl-sponsor-now" data-id="${escapeHtml(item.id)}" type="button">
+              Sponsorizza Ora
+            </button>
+          ` : `
+            <span class="tl-scheduled-note">Auto-sponsor alle 18:00 dopo uscita</span>
+          `}
         ` : `
           <div class="meta-inline">
-            Ad ID: ${escapeHtml(item.adId || "Creata")}
+            Ad ID: ${escapeHtml(item.adId || "Attiva")}
           </div>
         `}
       </div>

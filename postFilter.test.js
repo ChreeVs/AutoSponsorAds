@@ -35,15 +35,37 @@ test("isStandardPostFormat accepts standard POSTs (including Facebook shared_sto
     }),
     true
   );
+
+  // Pubblie post detail where all Meta accounts have isStory: true (e.g. PAR daily car stories)
+  assert.equal(
+    isStandardPostFormat({
+      id: "01a1ab51-044d-7774-a5eb-f52c6a6d0280",
+      body: "Nissan Qashqai e-Power Acenta - noleggio a lungo termine",
+      accounts: [
+        { provider: "facebook", accountName: "Pulzoni Antonelli Rent", isStory: true, isReel: false },
+        { provider: "instagram", accountName: "Pulzoni Antonelli | NLT", isStory: true, isReel: false }
+      ]
+    }),
+    false
+  );
+
+  // Pubblie account with externalLink pointing to Instagram story
+  assert.equal(
+    isStandardPostFormat(
+      { id: "01a1ab51", body: "Test story" },
+      { provider: "instagram", isStory: false, externalLink: "https://www.instagram.com/stories/pulzoniantonellirent/4033056388968163961" }
+    ),
+    false
+  );
 });
 
-test("findMatchingMetaPost matches published Facebook/Instagram posts by text or scheduled timestamp proximity", () => {
+test("findMatchingMetaPost matches published Facebook/Instagram posts by text, externalLink post ID, or scheduled timestamp proximity", () => {
   const fbPosts = [
     {
-      id: "865867900231234_101",
+      id: "865867900231234_1817475883039213",
       message: "FIAT GRANDE PANDA - Grande Panda Benzina in promozione per tutti, anche senza un'auto da rottamare.",
       created_time: "2026-11-17T10:00:12+0000",
-      permalink_url: "https://www.facebook.com/865867900231234/posts/101"
+      permalink_url: "https://www.facebook.com/1662414255212044/posts/1817475883039213"
     },
     {
       id: "865867900231234_100",
@@ -52,18 +74,25 @@ test("findMatchingMetaPost matches published Facebook/Instagram posts by text or
     }
   ];
 
+  // Match by Pubblie externalLink even when Facebook page vanity/delegate ID differs in URL
+  const matchedByUrl = findMatchingMetaPost(fbPosts, {
+    permalink: "https://www.facebook.com/1030530351733774/posts/1817475883039213",
+    postText: ""
+  });
+  assert.equal(matchedByUrl?.id, "865867900231234_1817475883039213");
+
   // Match by normalized text (even with curly apostrophe vs straight apostrophe)
   const matchedByText = findMatchingMetaPost(fbPosts, {
     postText: "FIAT GRANDE PANDA\nGrande Panda Benzina in promozione per tutti, anche senza un’auto da rottamare."
   });
-  assert.equal(matchedByText?.id, "865867900231234_101");
+  assert.equal(matchedByText?.id, "865867900231234_1817475883039213");
 
   // Match by scheduled timestamp proximity (11:00 Europe/Rome = 10:00 UTC) even if text is empty
   const matchedByTime = findMatchingMetaPost(fbPosts, {
     postText: "",
     effectiveDate: "2026-11-17T10:00:00.000Z"
   });
-  assert.equal(matchedByTime?.id, "865867900231234_101");
+  assert.equal(matchedByTime?.id, "865867900231234_1817475883039213");
 });
 
 test("deduplicateTimelineItems removes duplicate posts and non-Meta items", () => {

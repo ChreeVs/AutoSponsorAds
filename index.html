@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=4.0">
+    <link rel="stylesheet" href="styles.css?v=5.0">
   </head>
   <body>
     <!-- Login & Protection Overlay -->
@@ -150,18 +150,45 @@
         <!-- ============================================================== -->
         <section class="app-view" id="timelineView" role="tabpanel" aria-labelledby="tabBtnTimeline" hidden>
           <div class="section-header timeline-top-header">
-            <div>
-              <h2>Timeline Flow</h2>
-              <p>Post programmati e pubblicati su Facebook e Instagram (solo formato Post).</p>
+            <div class="tl-header-title-wrap">
+              <div class="tl-title-row">
+                <h2>Timeline Flow</h2>
+                <span class="tl-pubblie-status-pill" id="tlPubblieConnBadge">Pubblie: Verifica in corso...</span>
+              </div>
+              <p>Calendario operativo dei post Facebook e Instagram in formato Post (Storie, Reel e canali extra-Meta nascosti automaticamente).</p>
             </div>
             <div class="section-actions">
               <button class="btn btn-secondary btn-sm" id="openPubblieModalBtn" type="button">
-                Configura Canali
+                Collegamento Pubblie
               </button>
               <button class="btn btn-primary btn-sm" id="refreshTimelineBtn" type="button">
                 <span class="spinner" id="refreshTimelineSpinner" hidden></span>
                 <span>Aggiorna</span>
               </button>
+            </div>
+          </div>
+
+          <!-- Timeline Quick Summary Strip -->
+          <div class="timeline-summary-strip">
+            <div class="tl-stat-card">
+              <span class="tl-stat-label">Post in Timeline</span>
+              <strong class="tl-stat-value" id="tlStatTotal">0</strong>
+              <span class="tl-stat-sub">Solo Feed FB e IG</span>
+            </div>
+            <div class="tl-stat-card">
+              <span class="tl-stat-label">Programmati</span>
+              <strong class="tl-stat-value" id="tlStatUpcoming">0</strong>
+              <span class="tl-stat-sub">In coda di uscita</span>
+            </div>
+            <div class="tl-stat-card">
+              <span class="tl-stat-label">Inclusi nel Flow</span>
+              <strong class="tl-stat-value accent" id="tlStatIncluded">0</strong>
+              <span class="tl-stat-sub">Auto-sponsor alle 18:00</span>
+            </div>
+            <div class="tl-stat-card">
+              <span class="tl-stat-label">Sponsorizzati</span>
+              <strong class="tl-stat-value" id="tlStatSponsored">0</strong>
+              <span class="tl-stat-sub">Inserzione Meta attiva</span>
             </div>
           </div>
 
@@ -178,14 +205,15 @@
                 <label for="tlFilterPlatform">Canale Meta</label>
                 <select id="tlFilterPlatform" class="select-sm">
                   <option value="meta" selected>Tutti i Canali Meta (FB + IG)</option>
-                  <option value="instagram">Solo Instagram (POST)</option>
                   <option value="facebook">Solo Facebook (POST)</option>
+                  <option value="instagram">Solo Instagram (POST)</option>
                 </select>
               </div>
               <div class="filter-group">
                 <label for="tlFilterStatus">Stato nel Flow</label>
                 <select id="tlFilterStatus" class="select-sm">
                   <option value="">Tutti gli stati</option>
+                  <option value="PUBLISHED">Gia Pubblicati Online</option>
                   <option value="FUTURE">Solo Programmati (Futuri)</option>
                   <option value="INCLUDED">Inclusi nel Flow (Auto-Sponsor)</option>
                   <option value="EXCLUDED">Esclusi dal Flow (Non Sponsorizzare)</option>
@@ -193,18 +221,21 @@
                 </select>
               </div>
               <div class="filter-group search-group">
-                <label for="tlSearchInput">Cerca nel testo del post</label>
-                <input id="tlSearchInput" type="search" placeholder="Testo, #hashtag o canale...">
+                <label for="tlSearchInput">Cerca nel testo o canale</label>
+                <input id="tlSearchInput" type="search" placeholder="Filtra per testo, #hashtag o cliente...">
               </div>
             </div>
 
             <div class="timeline-bulk-actions">
-              <button class="btn btn-secondary btn-xs" id="tlIncludeAllBtn" type="button" title="Includi tutti i post visibili nel flusso di sponsorizzazione">
-                Includi Tutti nel Flow
-              </button>
-              <button class="btn btn-ghost btn-xs" id="tlExcludeAllBtn" type="button" title="Escludi tutti i post visibili dalla sponsorizzazione automatica">
-                Escludi Tutti
-              </button>
+              <span class="tl-filter-hint">Filtro attivo: Storie, Reel e social non-Meta sono esclusi in automatico.</span>
+              <div class="tl-bulk-btns">
+                <button class="btn btn-secondary btn-xs" id="tlIncludeAllBtn" type="button" title="Includi tutti i post visibili nel flusso di sponsorizzazione">
+                  Includi Visibili nel Flow
+                </button>
+                <button class="btn btn-ghost btn-xs" id="tlExcludeAllBtn" type="button" title="Escludi tutti i post visibili dalla sponsorizzazione automatica">
+                  Escludi Visibili
+                </button>
+              </div>
             </div>
           </div>
 
@@ -738,47 +769,64 @@
     <div class="modal-backdrop" id="pubblieModal" hidden>
       <div class="modal-dialog modal-lg" role="dialog" aria-modal="true" aria-labelledby="pubblieModalTitle">
         <div class="modal-header">
-          <h3 id="pubblieModalTitle">Configurazione Pubblie e Mappatura Canali</h3>
+          <div>
+            <h3 id="pubblieModalTitle">Collegamento Pubblie e Mappatura Canali Meta</h3>
+            <p class="modal-subtitle">Sincronizza il calendario editoriale Pubblie con le tue campagne Meta Ads (solo post standard Facebook e Instagram).</p>
+          </div>
           <button class="modal-close" id="closePubblieModalBtn" type="button" aria-label="Chiudi">Chiudi</button>
         </div>
 
         <div class="modal-body">
-          <!-- Step 1: API Key -->
+          <!-- Step 1: API Key & Live Connection Status -->
           <div class="form-section-divider" style="margin-top: 0;">
-            <span>1. Chiave API Pubblie (Bearer Token)</span>
+            <span>1. Stato Connessione e Chiave API Pubblie</span>
           </div>
-          <div class="form-row-2" style="align-items: flex-end;">
+
+          <div class="pubblie-conn-banner" id="pubblieConnBanner">
+            <div class="pubblie-conn-info">
+              <div class="pubblie-conn-title-row">
+                <span class="status-indicator" id="pubblieModalDot"></span>
+                <strong id="pubblieModalConnState">Verifica connessione...</strong>
+              </div>
+              <span class="pubblie-conn-meta" id="pubblieModalConnMeta">Configura la tua API Key per importare i progetti e i canali social da Pubblie.</span>
+            </div>
+            <div class="pubblie-conn-actions">
+              <button class="btn btn-secondary btn-xs" id="autoMapPubblieBtn" type="button" title="Abbina automaticamente i canali Facebook e Instagram di Pubblie alle tue regole di Automazione Meta">
+                Sincronizza Canali da Automazioni
+              </button>
+            </div>
+          </div>
+
+          <div class="form-row-2" style="align-items: flex-end; margin-top: 12px;">
             <div class="form-group" style="grid-column: 1 / -1;">
-              <label for="pubblieApiKeyInput">Inserisci la tua API Key di Pubblie</label>
+              <label for="pubblieApiKeyInput">Aggiorna o sostituisci API Key di Pubblie (Bearer Token)</label>
               <div class="copy-input-group">
-                <input id="pubblieApiKeyInput" type="password" placeholder="pb_live_xxxxxxxxxxxxxxxxxxxxxxxx...">
+                <input id="pubblieApiKeyInput" type="password" placeholder="Inserisci nuova API Key Pubblie per aggiornare...">
                 <button class="btn btn-primary btn-sm" id="savePubblieKeyBtn" type="button">Salva e Connetti</button>
               </div>
-              <small class="form-hint">La chiave viene salvata nel database persistente e permette di leggere il calendario editoriale di Pubblie.</small>
+              <small class="form-hint">La chiave API viene custodita nel database persistente e filtra in automatico Storie, Reel e canali non-Meta.</small>
             </div>
           </div>
 
           <!-- Step 2: Channel Mapping -->
           <div class="form-section-divider">
-            <span>2. Collega un Canale Pubblie (Facebook o Instagram) a una Destinazione Meta Ads</span>
+            <span>2. Associa un Canale Pubblie (Facebook o Instagram) a Meta Ads</span>
           </div>
-          <p style="font-size: 0.85rem; color: var(--text-secondary); margin: 0 0 12px 0;">
-            Associa un Progetto e Canale di Pubblie al rispettivo Account Pubblicitario, Campagna e Gruppo Inserzioni su Meta Ads.
-          </p>
 
           <form id="pubblieMappingForm" class="mapping-form-box">
             <div class="form-row-2">
               <div class="form-group">
-                <label for="mapPubblieProject">Progetto Pubblie <span class="req">*</span></label>
+                <label for="mapPubblieProject">Progetto Pubblie Attivo <span class="req">*</span></label>
                 <select id="mapPubblieProject" required>
-                  <option value="">Carica prima l'API Key...</option>
+                  <option value="">Caricamento progetti...</option>
                 </select>
               </div>
               <div class="form-group">
-                <label for="mapPubblieChannel">Canale Social nel Progetto <span class="req">*</span></label>
+                <label for="mapPubblieChannel">Canale Meta nel Progetto (Solo FB / IG) <span class="req">*</span></label>
                 <select id="mapPubblieChannel" required>
                   <option value="">Seleziona prima un progetto...</option>
                 </select>
+                <small class="form-hint" id="mapPubblieChannelHint">Vengono mostrati solo i canali Facebook e Instagram compatibili con Meta Ads.</small>
               </div>
             </div>
 
@@ -801,16 +849,15 @@
               <div class="form-group">
                 <label for="mapMetaAutomation">Collega a Regola di Automazione Esistente (Opzionale)</label>
                 <select id="mapMetaAutomation">
-                  <option value="">Nessuna (solo mappatura Timeline)</option>
+                  <option value="">Nessuna (usa parametri campagna/AdSet selezionati)</option>
                 </select>
               </div>
             </div>
 
             <div class="form-row-2">
               <div class="form-group">
-                <label for="mapCtaLink">URL di Destinazione / Link Sito Web (Per Campagne Traffico / Link Click)</label>
-                <input id="mapCtaLink" type="url" placeholder="Es: https://www.tuosito.it (Opzionale ma richiesto per campagne con link)">
-                <small class="form-hint">Se la tua campagna Meta richiede un pulsante di destinazione (CTA), inserisci qui il link.</small>
+                <label for="mapCtaLink">URL di Destinazione / Link Sito Web (Opzionale)</label>
+                <input id="mapCtaLink" type="url" placeholder="Es: https://www.tuosito.it (richiesto solo per campagne Traffico/Click)">
               </div>
               <div class="form-group">
                 <label for="mapCtaType">Tipo Pulsante Call To Action (CTA)</label>
@@ -825,12 +872,12 @@
               </div>
             </div>
 
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 10px;">
+            <div class="mapping-form-footer">
               <label class="switch-label">
                 <input type="checkbox" id="mapAutoSponsor" checked>
-                <span>Includi di default i nuovi post di questo canale nel Flow di sponsorizzazione</span>
+                <span>Includi automaticamente i nuovi post di questo canale nel Flow delle 18:00</span>
               </label>
-              <button class="btn btn-primary btn-sm" type="submit">+ Salva Mappatura Canale</button>
+              <button class="btn btn-primary btn-sm" type="submit">Salva Mappatura Canale</button>
             </div>
           </form>
 
@@ -842,9 +889,9 @@
             <table class="data-table">
               <thead>
                 <tr>
-                  <th>Progetto / Canale Pubblie</th>
-                  <th>Account / Campagna Meta</th>
-                  <th>Gruppo Inserzioni</th>
+                  <th>Progetto e Canale Pubblie</th>
+                  <th>Account e Campagna Meta</th>
+                  <th>Gruppo Inserzioni (AdSet)</th>
                   <th>Default Flow</th>
                   <th>Azioni</th>
                 </tr>
@@ -857,10 +904,10 @@
 
           <!-- Step 4: Visibilita Progetti nella Timeline -->
           <div class="form-section-divider">
-            <span>4. Visibilita Progetti nella Timeline (Nascondi Progetti Inattivi)</span>
+            <span>4. Visibilita Progetti nella Timeline Flow</span>
           </div>
-          <p style="font-size: 0.84rem; color: var(--text-secondary); margin: 0 0 10px 0;">
-            Disattiva i progetti conclusi o di test che non vuoi visualizzare nella Timeline Flow.
+          <p style="font-size: 0.82rem; color: var(--text-secondary); margin: 0 0 10px 0;">
+            Scegli quali progetti Pubblie mostrare nella Timeline Flow e quali nascondere.
           </p>
           <div class="table-container" style="max-height: 220px; overflow-y: auto;">
             <table class="data-table">
@@ -945,6 +992,6 @@
       </div>
     </div>
 
-    <script src="app.js?v=4.0"></script>
+    <script src="app.js?v=5.0"></script>
   </body>
 </html>

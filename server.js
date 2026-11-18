@@ -964,6 +964,78 @@ async function handleApi(req, res, url) {
       return json(res, 200, { ok: true, data: saved });
     }
 
+    if (url.pathname === "/api/pubblie/auto-map" && req.method === "POST") {
+      if (!pubblieService.getApiKey()) {
+        return json(res, 400, { error: "Configura prima la tua Chiave API Pubblie." });
+      }
+      const [allProjects, automations, existingMappings, rawArchived] = await Promise.all([
+        pubblieService.listProjects().catch(() => []),
+        db.getAutomations(),
+        db.getPubblieMappings(),
+        db.getSetting("archived_pubblie_projects")
+      ]);
+      let archivedIds = [];
+      try { archivedIds = rawArchived ? JSON.parse(rawArchived) : []; } catch {}
+      const activeProjects = allProjects.filter(p => !archivedIds.includes(p.id));
+      let syncedCount = 0;
+
+      for (const proj of activeProjects) {
+        const channels = await pubblieService.listProjectChannels(proj.id).catch(() => []);
+        const metaChannels = channels.filter(c => detectMetaPlatform(c.provider, c.name) !== null);
+        const normProjName = normalizeTextForMatch(proj.name);
+
+        for (const ch of metaChannels) {
+          const plat = detectMetaPlatform(ch.provider, ch.name);
+          if (!plat) continue;
+          const alreadyMapped = existingMappings.find(m => m.project_id === proj.id && m.channel_id === ch.id);
+          if (alreadyMapped) continue;
+
+          const normChName = normalizeTextForMatch(`${ch.name} ${ch.accountUsername || ""}`);
+          const samePlatAutos = automations.filter(a => (a.platform || "").toLowerCase() === plat.toLowerCase());
+          const matchedAuto = samePlatAutos.find(a => {
+            const normAuto = normalizeTextForMatch(`${a.name || ""} ${a.source_name || ""} ${a.campaign_name || ""}`);
+            return (
+              (normProjName && normProjName.length >= 2 && normAuto.split(" ").includes(normProjName)) ||
+              (normProjName && normAuto.includes(normProjName)) ||
+              (normChName && normChName.length >= 4 && (normAuto.includes(normChName) || normChName.includes(normalizeTextForMatch(a.source_name || ""))))
+            );
+          });
+
+          if (matchedAuto) {
+            await db.savePubblieMapping({
+              project_id: proj.id,
+              project_name: `${proj.name}${proj.teamName ? ` (${proj.teamName})` : ""}`,
+              channel_id: ch.id,
+              channel_name: `${plat.toUpperCase()}: ${ch.name}${ch.accountUsername ? ` (@${ch.accountUsername})` : ""}`,
+              channel_provider: plat.toLowerCase(),
+              ad_account_id: matchedAuto.ad_account_id,
+              ad_account_name: matchedAuto.ad_account_id,
+              campaign_id: matchedAuto.campaign_id,
+              campaign_name: matchedAuto.campaign_name || matchedAuto.campaign_id,
+              adset_id: matchedAuto.adset_id,
+              adset_name: matchedAuto.adset_name || matchedAuto.adset_id,
+              rule_id: matchedAuto.rule_id || "",
+              rule_name: matchedAuto.rule_name || "",
+              automation_id: matchedAuto.id,
+              ad_name_pattern: matchedAuto.ad_name_pattern || "ADV - {platform} - {post}",
+              ad_status: matchedAuto.ad_status || "ACTIVE",
+              cta_link: matchedAuto.cta_link || "",
+              cta_type: matchedAuto.cta_type || "LEARN_MORE",
+              auto_sponsor_on_publish: true
+            });
+            syncedCount++;
+          }
+        }
+      }
+
+      const updatedMappings = await db.getPubblieMappings();
+      return json(res, 200, {
+        ok: true,
+        syncedCount,
+        data: updatedMappings
+      });
+    }
+
     const pubblieMappingDeleteMatch = url.pathname.match(/^\/api\/pubblie\/mappings\/([^\/]+)$/);
     if (pubblieMappingDeleteMatch && req.method === "DELETE") {
       const id = pubblieMappingDeleteMatch[1];
@@ -981,13 +1053,16 @@ async function handleApi(req, res, url) {
       const filterStatus = url.searchParams.get("status") || "";
       const daysAhead = Number(url.searchParams.get("days") || 30);
 
-      const rawArchived = await db.getSetting("archived_pubblie_projects");
+      const [rawArchived, mappings, decisions, processedPosts, automations] = await Promise.all([
+        db.getSetting("archived_pubblie_projects"),
+        db.getPubblieMappings(),
+        db.getTimelineDecisions(),
+        db.getProcessedPosts(150),
+        db.getAutomations()
+      ]);
+
       let archivedProjectIds = [];
       try { archivedProjectIds = rawArchived ? JSON.parse(rawArchived) : []; } catch {}
-
-      const mappings = await db.getPubblieMappings();
-      const decisions = await db.getTimelineDecisions();
-      const processedPosts = await db.getProcessedPosts(100);
 
       let items = [];
       const now = new Date();
@@ -1004,156 +1079,204 @@ async function handleApi(req, res, url) {
           if (filterProjectId) {
             projectIds = [filterProjectId];
           } else {
-            // Mostra tutti i progetti attivi dell'utente per non nascondere canali e post non ancora mappati
             projectIds = allUserProjects
               .map(p => p.id)
               .filter(id => !archivedProjectIds.includes(id));
           }
 
-          for (const pId of projectIds) {
-            try {
-              const [posts, projectChannels] = await Promise.all([
-                pubblieService.listProjectPosts(pId, { dateFrom: fromDate, dateTo: toDate }),
-                pubblieService.listProjectChannels(pId).catch(() => [])
-              ]);
-              const mappedChannels = mappings.filter(m => m.project_id === pId);
-              const projectObj = projectMap.get(pId);
-              const projectNameFallback = projectObj ? `${projectObj.name}${projectObj.teamName ? ` (${projectObj.teamName})` : ""}` : `Progetto ${pId}`;
+          const perProjectItems = await Promise.all(
+            projectIds.map(async (pId) => {
+              const localItems = [];
+              try {
+                const [posts, projectChannels] = await Promise.all([
+                  pubblieService.listProjectPosts(pId, { dateFrom: fromDate, dateTo: toDate }),
+                  pubblieService.listProjectChannels(pId).catch(() => [])
+                ]);
+                const mappedChannels = mappings.filter(m => m.project_id === pId);
+                const projectObj = projectMap.get(pId);
+                const projectNameFallback = projectObj ? `${projectObj.name}${projectObj.teamName ? ` (${projectObj.teamName})` : ""}` : `Progetto ${pId}`;
+                const normProjName = normalizeTextForMatch(projectObj?.name || "");
 
-              for (const p of posts) {
-                // Scarta qualsiasi contenuto che non sia un "POST" standard (es. Story, Reel, Short, Live)
-                if (!isStandardPostFormat(p)) continue;
+                for (const p of posts) {
+                  // Scarta qualsiasi contenuto che non sia un "POST" standard (es. Story, Reel, Short, Live)
+                  if (!isStandardPostFormat(p)) continue;
 
-                const postDate = p.scheduleDateTime || p.publishedAt || now.toISOString();
-                const isFuture = new Date(postDate).getTime() > now.getTime();
+                  const postDate = p.scheduleDateTime || p.publishedAt || now.toISOString();
 
-                // Ricostruisci i canali destinatari reali senza mai inventare un fallback "meta" per canali esterni
-                const rawAccounts = Array.isArray(p.accounts) ? [...p.accounts] : [];
-                if (Array.isArray(p.channelIds) && p.channelIds.length > 0) {
-                  for (const cid of p.channelIds) {
-                    const chMatch = (projectChannels || []).find(c => c.id === cid);
-                    if (chMatch) {
-                      const alreadyListed = rawAccounts.some(a =>
-                        (a.channelId && a.channelId === cid) ||
-                        (a.accountName && chMatch.name && a.accountName.toLowerCase() === chMatch.name.toLowerCase())
-                      );
-                      if (!alreadyListed) {
-                        rawAccounts.push({
-                          provider: chMatch.provider || "",
-                          accountName: chMatch.name || "",
-                          channelId: chMatch.id,
-                          postType: "POST"
-                        });
+                  // Ricostruisci i canali destinatari reali senza mai inventare un fallback "meta" per canali esterni
+                  const rawAccounts = Array.isArray(p.accounts) ? [...p.accounts] : [];
+                  if (Array.isArray(p.channelIds) && p.channelIds.length > 0) {
+                    for (const cid of p.channelIds) {
+                      const chMatch = (projectChannels || []).find(c => c.id === cid);
+                      if (chMatch && detectMetaPlatform(chMatch.provider, chMatch.name)) {
+                        const alreadyListed = rawAccounts.some(a =>
+                          (a.channelId && a.channelId === cid) ||
+                          (a.accountName && chMatch.name && a.accountName.toLowerCase() === chMatch.name.toLowerCase())
+                        );
+                        if (!alreadyListed) {
+                          rawAccounts.push({
+                            provider: chMatch.provider || "",
+                            accountName: chMatch.name || "",
+                            channelId: chMatch.id,
+                            postType: "POST"
+                          });
+                        }
                       }
                     }
                   }
+
+                  const seenPlatformsForPost = new Set();
+
+                  for (let accIdx = 0; accIdx < rawAccounts.length; accIdx++) {
+                    const acc = rawAccounts[accIdx];
+                    if (!isStandardPostFormat(p, acc)) continue;
+
+                    const prov = (acc.provider || "").toLowerCase().trim();
+                    // Verifica immediata della piattaforma dall'account stesso: se prov e specificato e non e Meta (es. twitter, tiktok, linkedin, googlebusiness), scarta subito
+                    const directAccPlatform = detectMetaPlatform(prov, acc.accountName || "");
+                    if (prov && !directAccPlatform) continue;
+
+                    // Ricerca del canale associato nel progetto Pubblie limitata rigorosamente alla stessa piattaforma Meta
+                    const metaProjectChannels = (projectChannels || []).filter(c => {
+                      const chPlat = detectMetaPlatform(c.provider, c.name);
+                      if (!chPlat) return false;
+                      if (directAccPlatform && chPlat !== directAccPlatform) return false;
+                      return true;
+                    });
+
+                    let ch = metaProjectChannels.find(c =>
+                      (acc.channelId && c.id === acc.channelId) ||
+                      (acc.accountName && c.name && c.name.toLowerCase() === acc.accountName.toLowerCase()) ||
+                      (c.accountUsername && acc.accountName && c.accountUsername.toLowerCase() === acc.accountName.toLowerCase())
+                    );
+
+                    if (!ch && metaProjectChannels.length === 1) {
+                      ch = metaProjectChannels[0];
+                    }
+
+                    const platform = directAccPlatform || detectMetaPlatform(ch?.provider || prov, ch?.name || acc.accountName || "");
+                    if (!platform) continue;
+
+                    const isInstagram = platform === "Instagram";
+                    const isFacebook = platform === "Facebook";
+                    const channelProvider = isInstagram ? "instagram" : "facebook";
+
+                    const channelId = ch ? ch.id : (acc.channelId || "");
+                    const channelName = ch?.name || acc.accountName || platform;
+
+                    // Evita duplicati per lo stesso post e la stessa piattaforma Meta
+                    const platformChannelKey = `${platform.toLowerCase()}_${channelId || channelName.toLowerCase()}`;
+                    if (seenPlatformsForPost.has(platformChannelKey) || seenPlatformsForPost.has(platform.toLowerCase())) {
+                      continue;
+                    }
+                    seenPlatformsForPost.add(platformChannelKey);
+                    seenPlatformsForPost.add(platform.toLowerCase());
+
+                    const itemSuffix = isInstagram ? "ig" : "fb";
+                    const itemId = `pub_${p.id}_${itemSuffix}`;
+
+                    // Mappatura Meta per questo specifico canale
+                    let matchingMapping = null;
+                    if (channelId) {
+                      matchingMapping = mappedChannels.find(m => m.channel_id === channelId);
+                    }
+                    if (!matchingMapping && isInstagram) {
+                      matchingMapping = mappedChannels.find(m => m.channel_provider?.toLowerCase().includes("insta"));
+                    }
+                    if (!matchingMapping && isFacebook) {
+                      matchingMapping = mappedChannels.find(m => m.channel_provider?.toLowerCase().includes("face"));
+                    }
+
+                    // Se il canale non ha ancora una mappatura esplicita, risolvi automaticamente dalla regola di Automazione corrispondente
+                    if (!matchingMapping) {
+                      const normChName = normalizeTextForMatch(channelName);
+                      const matchedAuto = automations.find(a => {
+                        if ((a.platform || "").toLowerCase() !== platform.toLowerCase()) return false;
+                        const normAuto = normalizeTextForMatch(`${a.name || ""} ${a.source_name || ""} ${a.campaign_name || ""}`);
+                        return (
+                          (normProjName && normProjName.length >= 2 && normAuto.split(" ").includes(normProjName)) ||
+                          (normChName && normChName.length >= 4 && (normAuto.includes(normChName) || normChName.includes(normalizeTextForMatch(a.source_name || ""))))
+                        );
+                      });
+                      if (matchedAuto) {
+                        matchingMapping = {
+                          project_id: pId,
+                          project_name: projectNameFallback,
+                          channel_id: channelId,
+                          channel_name: channelName,
+                          channel_provider: channelProvider,
+                          ad_account_id: matchedAuto.ad_account_id,
+                          ad_account_name: matchedAuto.ad_account_id,
+                          campaign_id: matchedAuto.campaign_id,
+                          campaign_name: matchedAuto.campaign_name || matchedAuto.campaign_id,
+                          adset_id: matchedAuto.adset_id,
+                          adset_name: matchedAuto.adset_name || matchedAuto.adset_id,
+                          rule_id: matchedAuto.rule_id || "",
+                          rule_name: matchedAuto.rule_name || "",
+                          automation_id: matchedAuto.id,
+                          ad_name_pattern: matchedAuto.ad_name_pattern || "ADV - {platform} - {post}",
+                          ad_status: matchedAuto.ad_status || "ACTIVE",
+                          cta_link: matchedAuto.cta_link || "",
+                          cta_type: matchedAuto.cta_type || "LEARN_MORE",
+                          auto_sponsor_on_publish: true
+                        };
+                      }
+                    }
+
+                    // Decisione manuale salvata (cerca per itemId, id legacy senza suffisso, oppure per id del post originale)
+                    let decision = decisions[itemId] || decisions[`pub_${p.id}`] || decisions[p.id];
+                    let flowStatus = decision?.sponsorship_status;
+                    if (!flowStatus) {
+                      flowStatus = matchingMapping ? (matchingMapping.auto_sponsor_on_publish ? "INCLUDED" : "EXCLUDED") : "INCLUDED";
+                    }
+
+                    const isAlreadyProcessed = processedPosts.find(pp => pp.post_id === p.id || pp.post_id === itemId || pp.post_id === `pub_${p.id}`);
+                    if (isAlreadyProcessed || flowStatus === "SPONSORED") {
+                      flowStatus = "SPONSORED";
+                    }
+
+                    const accStatus = String(acc.status || p.status || "").toUpperCase();
+                    const isFuture = accStatus === "PUBLISHED" ? false : (new Date(postDate).getTime() > now.getTime());
+
+                    localItems.push({
+                      id: itemId,
+                      rawId: p.id,
+                      source: "pubblie",
+                      platform,
+                      postFormat: "POST",
+                      primaryProvider: channelProvider,
+                      providers: [channelProvider],
+                      isMetaCompatible: true,
+                      projectId: pId,
+                      projectName: matchingMapping?.project_name || projectNameFallback,
+                      channelId,
+                      channelIds: channelId ? [channelId] : (p.channelIds || []),
+                      channelName,
+                      accounts: [acc],
+                      text: p.text || "",
+                      images: p.images || [],
+                      videoIds: p.videoIds || [],
+                      link: acc.permalink || p.link || "",
+                      scheduledAt: p.scheduleDateTime,
+                      publishedAt: p.publishedAt,
+                      effectiveDate: postDate,
+                      isFuture,
+                      pubblieStatus: accStatus || p.status,
+                      flowStatus,
+                      adId: isAlreadyProcessed?.ad_id || decision?.ad_id || "",
+                      mapping: matchingMapping || null,
+                      customTarget: decision?.custom_target || null
+                    });
+                  }
                 }
-
-                // Tieni traccia delle piattaforme Meta gia generate per questo singolo post per evitare duplicati
-                const seenPlatformsForPost = new Set();
-
-                for (let accIdx = 0; accIdx < rawAccounts.length; accIdx++) {
-                  const acc = rawAccounts[accIdx];
-                  if (!isStandardPostFormat(p, acc)) continue;
-
-                  const prov = (acc.provider || "").toLowerCase().trim();
-
-                  // Ricerca del canale associato nel progetto Pubblie
-                  let ch = (projectChannels || []).find(c =>
-                    (acc.channelId && c.id === acc.channelId) ||
-                    (acc.accountName && c.name && c.name.toLowerCase() === acc.accountName.toLowerCase()) ||
-                    (c.accountUsername && acc.accountName && c.accountUsername.toLowerCase() === acc.accountName.toLowerCase())
-                  );
-
-                  if (!ch && prov) {
-                    const sameProv = (projectChannels || []).filter(c => (c.provider || "").toLowerCase().includes(prov));
-                    if (sameProv.length === 1) ch = sameProv[0];
-                  }
-
-                  const channelProvider = (ch?.provider || prov).toLowerCase();
-                  const candidateName = ch?.name || acc.accountName || "";
-                  const platform = detectMetaPlatform(channelProvider, candidateName);
-
-                  // Escludi categoricamente tutti i canali diversi da Facebook e Instagram (es. TikTok, LinkedIn, Google Business, YouTube)
-                  if (!platform) continue;
-
-                  const isInstagram = platform === "Instagram";
-                  const isFacebook = platform === "Facebook";
-                  const isMetaCompatible = true;
-
-                  const channelId = ch ? ch.id : (acc.channelId || "");
-                  const channelName = ch?.name || acc.accountName || platform;
-
-                  // Evita duplicati per lo stesso post e la stessa piattaforma Meta
-                  const platformChannelKey = `${platform.toLowerCase()}_${channelId || channelName.toLowerCase()}`;
-                  if (seenPlatformsForPost.has(platformChannelKey) || seenPlatformsForPost.has(platform.toLowerCase())) {
-                    continue;
-                  }
-                  seenPlatformsForPost.add(platformChannelKey);
-                  seenPlatformsForPost.add(platform.toLowerCase());
-
-                  const itemSuffix = isInstagram ? "ig" : "fb";
-                  const itemId = `pub_${p.id}_${itemSuffix}`;
-
-                  // Mappatura Meta per questo specifico canale
-                  let matchingMapping = null;
-                  if (channelId) {
-                    matchingMapping = mappedChannels.find(m => m.channel_id === channelId);
-                  }
-                  if (!matchingMapping && isInstagram) {
-                    matchingMapping = mappedChannels.find(m => m.channel_provider?.toLowerCase().includes("insta"));
-                  }
-                  if (!matchingMapping && isFacebook) {
-                    matchingMapping = mappedChannels.find(m => m.channel_provider?.toLowerCase().includes("face"));
-                  }
-
-                  // Decisione manuale salvata (cerca per itemId, id legacy senza suffisso, oppure per id del post originale)
-                  let decision = decisions[itemId] || decisions[`pub_${p.id}`] || decisions[p.id];
-                  let flowStatus = decision?.sponsorship_status;
-                  if (!flowStatus) {
-                    flowStatus = matchingMapping ? (matchingMapping.auto_sponsor_on_publish ? "INCLUDED" : "EXCLUDED") : "INCLUDED";
-                  }
-
-                  const isAlreadyProcessed = processedPosts.find(pp => pp.post_id === p.id || pp.post_id === itemId || pp.post_id === `pub_${p.id}`);
-                  if (isAlreadyProcessed || flowStatus === "SPONSORED") {
-                    flowStatus = "SPONSORED";
-                  }
-
-                  items.push({
-                    id: itemId,
-                    rawId: p.id,
-                    source: "pubblie",
-                    platform,
-                    postFormat: "POST",
-                    primaryProvider: isInstagram ? "instagram" : "facebook",
-                    providers: [channelProvider],
-                    isMetaCompatible,
-                    projectId: pId,
-                    projectName: matchingMapping?.project_name || projectNameFallback,
-                    channelId,
-                    channelIds: channelId ? [channelId] : (p.channelIds || []),
-                    channelName,
-                    accounts: [acc],
-                    text: p.text || "",
-                    images: p.images || [],
-                    videoIds: p.videoIds || [],
-                    link: p.link || "",
-                    scheduledAt: p.scheduleDateTime,
-                    publishedAt: p.publishedAt,
-                    effectiveDate: postDate,
-                    isFuture,
-                    pubblieStatus: p.status,
-                    flowStatus,
-                    adId: isAlreadyProcessed?.ad_id || decision?.ad_id || "",
-                    mapping: matchingMapping || null,
-                    customTarget: decision?.custom_target || null
-                  });
-                }
+              } catch (pErr) {
+                console.warn(`[Pubblie] Errore caricamento post per progetto ${pId}:`, pErr.message);
               }
-            } catch (pErr) {
-              console.warn(`[Pubblie] Errore caricamento post per progetto ${pId}:`, pErr.message);
-            }
-          }
+              return localItems;
+            })
+          );
+
+          items = perProjectItems.flat();
         } catch (pubErr) {
           console.warn("[Pubblie] Errore fetch post Pubblie:", pubErr.message);
         }
@@ -1190,17 +1313,21 @@ async function handleApi(req, res, url) {
       if (filterStatus) {
         if (filterStatus === "FUTURE") {
           filtered = filtered.filter(i => i.isFuture);
+        } else if (filterStatus === "PUBLISHED") {
+          filtered = filtered.filter(i => !i.isFuture);
         } else {
           filtered = filtered.filter(i => i.flowStatus === filterStatus);
         }
       }
 
       const stats = {
-        total: filtered.length,
-        upcomingCount: filtered.filter(i => i.isFuture).length,
-        includedCount: filtered.filter(i => i.flowStatus === "INCLUDED").length,
-        excludedCount: filtered.filter(i => i.flowStatus === "EXCLUDED").length,
-        sponsoredCount: filtered.filter(i => i.flowStatus === "SPONSORED").length,
+        total: items.length,
+        filteredCount: filtered.length,
+        upcomingCount: items.filter(i => i.isFuture).length,
+        publishedCount: items.filter(i => !i.isFuture).length,
+        includedCount: items.filter(i => i.flowStatus === "INCLUDED").length,
+        excludedCount: items.filter(i => i.flowStatus === "EXCLUDED").length,
+        sponsoredCount: items.filter(i => i.flowStatus === "SPONSORED").length,
         externalCount: 0,
         mappingsCount: mappings.length
       };
@@ -1348,7 +1475,7 @@ async function handleApi(req, res, url) {
       // Se il post arriva da Pubblie e manca testo o link, prova ad arricchire i dettagli da Pubblie
       const rawPubblieId = String(body.sourcePostId || body.postId || "")
         .replace(/^pub_/, "")
-        .replace(/_(facebook|instagram)$/i, "");
+        .replace(/_(facebook|instagram|fb|ig)$/i, "");
       if (rawPubblieId && pubblieService.getApiKey() && (!postText || !permalink)) {
         try {
           const detail = await pubblieService.getPostDetails(rawPubblieId);
@@ -1733,7 +1860,7 @@ function serveStatic(req, res, url) {
 
     res.writeHead(200, {
       "content-type": mimeTypes[ext] || "application/octet-stream",
-      "cache-control": ext === ".html" ? "no-cache" : "public, max-age=3600"
+      "cache-control": (ext === ".html" || ext === ".css" || ext === ".js") ? "no-cache" : "public, max-age=3600"
     });
 
     if (req.method === "HEAD") {
@@ -1765,6 +1892,22 @@ async function ensureInitialized() {
       if (savedPubblieKey && !savedPubblieKey.toLowerCase().includes("your_")) {
         pubblieService.setApiKey(savedPubblieKey);
         console.log("[Pubblie] Chiave API Pubblie caricata dal database persistente");
+        // Pre-riscalda la cache dei progetti e dei dettagli post Pubblie in background
+        (async () => {
+          try {
+            const [projects, rawArchived] = await Promise.all([
+              pubblieService.listProjects().catch(() => []),
+              db.getSetting("archived_pubblie_projects")
+            ]);
+            let archivedIds = [];
+            try { archivedIds = rawArchived ? JSON.parse(rawArchived) : []; } catch {}
+            const active = projects.filter(p => !archivedIds.includes(p.id));
+            const now = new Date();
+            const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).toISOString();
+            const toDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+            await Promise.all(active.map(p => pubblieService.listProjectPosts(p.id, { dateFrom: startOfToday, dateTo: toDate }).catch(() => [])));
+          } catch {}
+        })();
       }
     })();
   }

@@ -1,4 +1,4 @@
-const { isStandardPostFormat } = require("./postFilter");
+const { detectMetaPlatform, isStandardPostFormat } = require("./postFilter");
 
 class PubblieService {
   constructor(env = {}) {
@@ -6,11 +6,16 @@ class PubblieService {
     this.apiKey = raw.toLowerCase().includes("your_") ? "" : raw;
     this.baseUrl = "https://pubblie.io";
     this.cache = new Map();
+    this.detailCache = new Map();
   }
 
   setApiKey(key) {
     const raw = String(key || "").trim();
-    this.apiKey = raw.toLowerCase().includes("your_") ? "" : raw;
+    const nextKey = raw.toLowerCase().includes("your_") ? "" : raw;
+    if (this.apiKey !== nextKey) {
+      this.detailCache.clear();
+    }
+    this.apiKey = nextKey;
     this.cache.clear();
   }
 
@@ -167,21 +172,58 @@ class PubblieService {
     const raw = await this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/channels`, { apiKey });
     
     const items = Array.isArray(raw) ? raw : (raw.data || raw.channels || []);
-    const result = items.map(c => ({
-      id: String(c.id || c.channelId),
-      name: c.name || c.title || c.username || c.accountName || "Canale Social",
-      provider: (c.provider || c.type || c.platform || "").toLowerCase(),
-      imageUrl: c.avatarUrl || c.picture || c.imageUrl || c.profilePicture || null,
-      accountUsername: c.username || c.screenName || "",
-      isDirectPublish: Boolean(c.isDirectPublish ?? true)
-    }));
+    const result = items.map(c => {
+      const name = c.name || c.title || c.username || c.accountName || "Canale Social";
+      const provider = (c.provider || c.type || c.platform || "").toLowerCase();
+      const metaPlatform = detectMetaPlatform(provider, name);
+      return {
+        id: String(c.id || c.channelId),
+        name,
+        provider,
+        metaPlatform,
+        isMetaCompatible: Boolean(metaPlatform),
+        imageUrl: c.avatarUrl || c.picture || c.imageUrl || c.profilePicture || null,
+        accountUsername: c.username || c.screenName || "",
+        isDirectPublish: Boolean(c.isDirectPublish ?? true)
+      };
+    });
 
     this.cache.set(cacheKey, { time: Date.now(), data: result });
     return result;
   }
 
   /**
-   * Lists posts for a project filtered by status and date range
+   * Fetches raw post details from /api/v1/posts/{postId} with in-memory caching.
+   * Note: Pubblie only includes `isStory`, `isReel`, `externalLink`, and `images` in the detail endpoint.
+   */
+  async getPostDetailsRaw(postId, apiKey) {
+    if (!postId) throw new Error("postId mancante");
+    const cleanId = String(postId)
+      .replace(/^pub_/, "")
+      .replace(/_(facebook|instagram|fb|ig)$/i, "");
+
+    const cached = this.detailCache.get(cleanId);
+    if (cached && Date.now() - cached.time < 30 * 60 * 1000) {
+      return cached.data;
+    }
+
+    const raw = await this.request(`/api/v1/posts/${encodeURIComponent(cleanId)}`, { apiKey });
+    const data = raw && typeof raw === "object" && raw.data && !raw.id ? raw.data : raw;
+
+    if (data && typeof data === "object" && (data.id || data.accounts)) {
+      if (this.detailCache.size > 600) {
+        const firstKey = this.detailCache.keys().next().value;
+        if (firstKey) this.detailCache.delete(firstKey);
+      }
+      this.detailCache.set(cleanId, { time: Date.now(), data });
+    }
+    return data;
+  }
+
+  /**
+   * Lists posts for a project filtered by status and date range.
+   * Automatically enriches Meta candidate posts with /api/v1/posts/{postId} details
+   * so that Stories (`isStory: true`), Reels (`isReel: true`), and non-Meta accounts are 100% hidden.
    * Endpoint: GET /api/v1/projects/{projectId}/posts
    */
   async listProjectPosts(projectId, { status = "", dateFrom = "", dateTo = "" } = {}, apiKey) {
@@ -191,6 +233,8 @@ class PubblieService {
     const fromStr = dateFrom || now.toISOString();
     const futureDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const toStr = dateTo || futureDate.toISOString();
+    const fromMs = new Date(fromStr).getTime();
+    const toMs = new Date(toStr).getTime();
 
     const params = {
       from: fromStr,
@@ -200,31 +244,69 @@ class PubblieService {
     };
     if (status) params.status = status;
 
-    const raw = await this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/posts`, {
-      params,
-      apiKey
+    const listCacheKey = `posts_${projectId}_${fromStr.slice(0, 13)}_${toStr.slice(0, 10)}_${status}`;
+    const cachedList = this.cache.get(listCacheKey);
+    let items = null;
+    if (cachedList && Date.now() - cachedList.time < 45000) {
+      items = cachedList.data;
+    } else {
+      const raw = await this.request(`/api/v1/projects/${encodeURIComponent(projectId)}/posts`, {
+        params,
+        apiKey
+      });
+      items = Array.isArray(raw) ? raw : (raw.data || raw.posts || []);
+      this.cache.set(listCacheKey, { time: Date.now(), data: items });
+    }
+
+    // 1. Pre-filter summary items: keep only posts within the requested date range
+    // that have at least one Meta (Facebook/Instagram) account and pass summary-level format check.
+    const candidates = items.filter(p => {
+      if (!isStandardPostFormat(p)) return false;
+      const postDateStr = p.scheduleDate || p.scheduleDateTime || p.scheduledAt || p.publishDate || p.publishedAt;
+      if (postDateStr && !isNaN(fromMs)) {
+        const postMs = new Date(postDateStr).getTime();
+        if (!isNaN(postMs) && postMs < fromMs - 12 * 3600 * 1000) return false;
+        if (!isNaN(postMs) && !isNaN(toMs) && postMs > toMs + 24 * 3600 * 1000) return false;
+      }
+      if (Array.isArray(p.accounts) && p.accounts.length > 0) {
+        const hasMetaAcc = p.accounts.some(a =>
+          detectMetaPlatform(a.provider || a.platform || a.type || "", a.accountName || a.name || "") !== null
+        );
+        if (!hasMetaAcc) return false;
+      }
+      return true;
     });
 
-    const items = Array.isArray(raw) ? raw : (raw.data || raw.posts || []);
-    // Strictly filter only standard "POST" format items (exclude Stories, Reels, Shorts, etc.)
-    const postOnlyItems = items.filter(p => isStandardPostFormat(p));
-    const normalized = postOnlyItems.map(p => this.normalizePost(p, projectId));
-
-    // Fast parallel detail enrichment for upcoming posts that have no thumbnail URL yet (max 4 posts)
-    const needImages = normalized.filter(p => (!p.images || p.images.length === 0) && (p.imageCount > 0 || p.hasMedia)).slice(0, 4);
-    if (needImages.length > 0) {
-      await Promise.all(
-        needImages.map(async (post) => {
+    // 2. Enrich candidates with /api/v1/posts/{postId} in parallel batches of 10
+    // so we obtain `isStory`, `isReel`, `externalLink`, `images`, and full `body`.
+    const detailedPosts = [];
+    const batchSize = 10;
+    for (let i = 0; i < candidates.length; i += batchSize) {
+      const slice = candidates.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        slice.map(async (summaryPost) => {
           try {
-            const detail = await this.getPostDetails(post.id, apiKey);
-            if (detail && detail.images && detail.images.length) {
-              post.images = detail.images.slice(0, 1);
+            const detail = await this.getPostDetailsRaw(summaryPost.id || summaryPost.postId, apiKey);
+            if (detail && typeof detail === "object") {
+              return { ...summaryPost, ...detail };
             }
           } catch {
-            // ignore individual fetch errors
+            // fallback to summaryPost if detail endpoint fails
           }
+          return summaryPost;
         })
       );
+      detailedPosts.push(...batchResults);
+    }
+
+    // 3. Strictly filter out Stories, Reels, and posts with zero valid Meta Feed accounts
+    const normalized = [];
+    for (const rawPost of detailedPosts) {
+      if (!isStandardPostFormat(rawPost)) continue;
+      const norm = this.normalizePost(rawPost, projectId);
+      if (norm.accounts && norm.accounts.length > 0) {
+        normalized.push(norm);
+      }
     }
 
     return normalized;
@@ -236,7 +318,7 @@ class PubblieService {
    */
   async getPostDetails(postId, apiKey) {
     if (!postId) throw new Error("postId mancante");
-    const p = await this.request(`/api/v1/posts/${encodeURIComponent(postId)}`, { apiKey });
+    const p = await this.getPostDetailsRaw(postId, apiKey);
     return this.normalizePost(p);
   }
 
@@ -262,7 +344,8 @@ class PubblieService {
   }
 
   /**
-   * Helper to normalize a Pubblie post object into a standard representation
+   * Helper to normalize a Pubblie post object into a standard representation.
+   * Keeps ONLY Meta (Facebook/Instagram) accounts in standard POST format (automatically hiding Stories & Reels).
    */
   normalizePost(p, projectId = "") {
     let images = [];
@@ -288,33 +371,38 @@ class PubblieService {
       images = [String(p.mediaUrl).trim()];
     }
 
-    let channelIds = [];
-    if (Array.isArray(p.channelIds)) {
-      channelIds = p.channelIds.map(String);
-    } else if (typeof p.channelIds === "string") {
-      channelIds = p.channelIds.split(",").map(s => s.trim()).filter(Boolean);
-    } else if (Array.isArray(p.accounts)) {
-      channelIds = p.accounts.map(a => String(a.channelId || a.id || "")).filter(Boolean);
-    }
-
     const accounts = Array.isArray(p.accounts)
       ? p.accounts
-          .filter(a => isStandardPostFormat(p, a))
+          .filter(a => {
+            const plat = detectMetaPlatform(a.provider || a.platform || a.type || "", a.accountName || a.name || "");
+            if (!plat) return false;
+            return isStandardPostFormat(p, a);
+          })
           .map(a => ({
-            provider: a.provider || a.platform || a.type || "",
+            provider: (a.provider || a.platform || a.type || "").toLowerCase(),
             accountName: a.accountName || a.name || a.username || "",
             channelId: String(a.channelId || a.id || ""),
-            postType: a.postType || a.type || a.format || "POST",
+            postType: "POST",
+            isStory: Boolean(a.isStory || a.is_story),
+            isReel: Boolean(a.isReel || a.is_reel),
+            status: (a.status || p.status || "SCHEDULED").toUpperCase(),
             externalId: a.externalId || a.socialPostId || a.postId || "",
-            permalink: a.permalink || a.publishedUrl || a.url || ""
+            permalink: a.externalLink || a.permalink || a.publishedUrl || a.url || ""
           }))
       : [];
+
+    let channelIds = [];
+    if (Array.isArray(p.channelIds) && p.channelIds.length > 0) {
+      channelIds = p.channelIds.map(String);
+    } else if (typeof p.channelIds === "string" && p.channelIds.trim()) {
+      channelIds = p.channelIds.split(",").map(s => s.trim()).filter(Boolean);
+    }
 
     const validImages = images.filter(Boolean);
 
     return {
       id: String(p.id || p.postId),
-      projectId: String(p.projectId || projectId || ""),
+      projectId: String(p.projectId || p.folderId || projectId || ""),
       postType: "POST",
       text: p.body || p.text || p.content || p.caption || p.message || "",
       scheduleDateTime: p.scheduleDate || p.scheduleDateTime || p.scheduledAt || p.publishAt || null,
@@ -326,7 +414,7 @@ class PubblieService {
       imageCount: Number(p.imageCount || validImages.length || 0),
       hasMedia: Boolean(p.hasMedia || validImages.length > 0 || (p.imageCount && p.imageCount > 0)),
       videoIds: Array.isArray(p.videoIds) ? p.videoIds : (p.videoIds ? String(p.videoIds).split(",").map(s => s.trim()) : []),
-      link: p.link || p.url || p.permalink || "",
+      link: p.link || p.url || p.permalink || p.externalLink || "",
       externalId: p.externalId || p.socialPostId || "",
       customerApprovalRequired: Boolean(p.customerApprovalRequired)
     };

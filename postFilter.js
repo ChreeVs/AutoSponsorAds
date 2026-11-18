@@ -86,17 +86,37 @@ function detectMetaPlatform(providerStr = "", channelNameStr = "") {
 function isStandardPostFormat(post = {}, accountEntry = null) {
   if (!post || typeof post !== "object") return false;
 
-  // 1. Explicit boolean flags
+  // 1. Explicit boolean flags on post or accountEntry
   if (
     post.isStory === true ||
     post.is_story === true ||
+    post.story === true ||
     post.isReel === true ||
     post.is_reel === true ||
     post.isShort === true ||
     accountEntry?.isStory === true ||
-    accountEntry?.isReel === true
+    accountEntry?.is_story === true ||
+    accountEntry?.story === true ||
+    accountEntry?.isReel === true ||
+    accountEntry?.is_reel === true
   ) {
     return false;
+  }
+
+  // 1b. If checking at post level and post.accounts is populated with detailed flags,
+  // reject the post if it has accounts and ALL Meta accounts are Stories or Reels.
+  if (!accountEntry && Array.isArray(post.accounts) && post.accounts.length > 0) {
+    const metaAccounts = post.accounts.filter(a =>
+      detectMetaPlatform(a?.provider || a?.platform || a?.type || "", a?.accountName || a?.name || "") !== null
+    );
+    if (metaAccounts.length > 0) {
+      const hasAtLeastOneStandardMetaAccount = metaAccounts.some(a =>
+        isStandardPostFormat({ ...post, accounts: null }, a)
+      );
+      if (!hasAtLeastOneStandardMetaAccount) {
+        return false;
+      }
+    }
   }
 
   // 2. Instagram Graph API media_product_type check
@@ -153,15 +173,18 @@ function isStandardPostFormat(post = {}, accountEntry = null) {
     }
   }
 
-  // 5. Check permalink / URL patterns (/stories/, /reel/, /reels/, /shorts/, /live/, /events/)
+  // 5. Check permalink / externalLink / URL patterns (/stories/, /reel/, /reels/, /shorts/, /live/, /events/)
   // Note: Facebook feed permalinks often look like `https://www.facebook.com/story.php?story_fbid=...`,
   // which is a standard feed post, NOT `/stories/`.
   const urlCandidates = [
     post.permalink,
     post.permalink_url,
+    post.externalLink,
     post.link,
     post.url,
     accountEntry?.permalink,
+    accountEntry?.externalLink,
+    accountEntry?.publishedUrl,
     accountEntry?.url
   ].filter(Boolean);
 
@@ -213,7 +236,7 @@ function extractMetaPostText(metaPost = {}) {
 /**
  * Finds the best matching published Meta post from a list of Facebook/Instagram posts.
  * Matches by:
- * 1. Exact permalink or Instagram shortcode
+ * 1. Exact permalink, Instagram shortcode, or Facebook post/story_fbid numeric ID
  * 2. Normalized text prefix/substring or significant word overlap (>= 60%)
  * 3. Scheduled/effective publication timestamp proximity (within +-90 minutes on the same page/account)
  */
@@ -222,16 +245,21 @@ function findMatchingMetaPost(metaPosts = [], target = {}) {
 
   const targetPermalink = String(target.permalink || "").trim();
   const igShortcode = targetPermalink.match(/\/p\/([^\/\?]+)/)?.[1];
-  const fbStoryFbid = targetPermalink.match(/story_fbid=([^&]+)/)?.[1];
+  const fbStoryFbid =
+    targetPermalink.match(/story_fbid=([^&]+)/)?.[1] ||
+    targetPermalink.match(/\/(?:posts|videos|photos)\/(\d+)/)?.[1];
 
-  // 1. Permalink / shortcode match
+  // 1. Permalink / shortcode / Facebook post ID match
   if (targetPermalink) {
     const byUrl = metaPosts.find(p => {
       const pUrl = String(p.permalink || p.permalink_url || "").trim();
+      const pId = String(p.id || "").trim();
+      if (fbStoryFbid && (pId === fbStoryFbid || pId.endsWith(`_${fbStoryFbid}`) || pUrl.includes(fbStoryFbid))) {
+        return true;
+      }
       if (!pUrl) return false;
       if (pUrl === targetPermalink) return true;
       if (igShortcode && pUrl.includes(igShortcode)) return true;
-      if (fbStoryFbid && (pUrl.includes(fbStoryFbid) || String(p.id || "").includes(fbStoryFbid))) return true;
       return false;
     });
     if (byUrl) return byUrl;
