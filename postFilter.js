@@ -1,9 +1,10 @@
 /**
- * Pure filtering and deduplication utilities for AutoSponsorAds.
+ * Pure filtering, text normalization, post matching, and deduplication utilities for AutoSponsorAds.
  * Ensures:
  * 1. Only Facebook and Instagram channels are treated as Meta-compatible.
  * 2. Only standard "POST" format items are included/sponsored (excluding Stories, Reels, Shorts, Live, Events).
  * 3. Duplicate posts across channels or repeated API entries are deduplicated in Timeline Flow.
+ * 4. Published posts on Facebook and Instagram are reliably matched by permalink, normalized text, or scheduled timestamp proximity.
  */
 
 const NON_META_PROVIDERS = [
@@ -108,6 +109,8 @@ function isStandardPostFormat(post = {}, accountEntry = null) {
   }
 
   // 3. Check type/format/placement fields on post and accountEntry
+  // Note: Facebook Graph API `status_type` uses values like `shared_story`, `added_photos`, `mobile_status_update`
+  // for standard feed posts, so `status_type` must NOT be rejected for containing the word "story".
   const formatCandidates = [
     post.postType,
     post.post_type,
@@ -118,7 +121,6 @@ function isStandardPostFormat(post = {}, accountEntry = null) {
     post.placement,
     post.instagramPostType,
     post.facebookPostType,
-    post.status_type,
     accountEntry?.postType,
     accountEntry?.post_type,
     accountEntry?.type,
@@ -142,7 +144,7 @@ function isStandardPostFormat(post = {}, accountEntry = null) {
   if (Array.isArray(attachments)) {
     for (const att of attachments) {
       const attType = `${att.type || ""} ${att.media_type || ""}`.toLowerCase();
-      for (const banned of NON_POST_FORMAT_KEYWORDS) {
+      for (const banned of ["reel", "reels", "story", "stories", "short", "shorts", "live", "event"]) {
         const regex = new RegExp(`(^|[^a-z])${banned}([^a-z]|$)`, "i");
         if (regex.test(attType)) {
           return false;
@@ -152,6 +154,8 @@ function isStandardPostFormat(post = {}, accountEntry = null) {
   }
 
   // 5. Check permalink / URL patterns (/stories/, /reel/, /reels/, /shorts/, /live/, /events/)
+  // Note: Facebook feed permalinks often look like `https://www.facebook.com/story.php?story_fbid=...`,
+  // which is a standard feed post, NOT `/stories/`.
   const urlCandidates = [
     post.permalink,
     post.permalink_url,
@@ -165,7 +169,7 @@ function isStandardPostFormat(post = {}, accountEntry = null) {
     const u = String(rawUrl).toLowerCase();
     if (
       u.includes("/stories/") ||
-      u.includes("/story/") ||
+      (u.includes("/story/") && !u.includes("story.php")) ||
       u.includes("/reel/") ||
       u.includes("/reels/") ||
       u.includes("/shorts/") ||
@@ -177,6 +181,126 @@ function isStandardPostFormat(post = {}, accountEntry = null) {
   }
 
   return true;
+}
+
+/**
+ * Normalizes post text for fuzzy matching between Pubblie and Meta Graph API.
+ */
+function normalizeTextForMatch(str = "") {
+  return String(str || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
+ * Extracts all candidate text from a Meta Graph API post (Facebook or Instagram).
+ */
+function extractMetaPostText(metaPost = {}) {
+  const parts = [
+    metaPost.message,
+    metaPost.caption,
+    metaPost.attachments?.data?.[0]?.description,
+    metaPost.attachments?.data?.[0]?.title
+  ].filter(Boolean);
+  return parts.join(" ").trim();
+}
+
+/**
+ * Finds the best matching published Meta post from a list of Facebook/Instagram posts.
+ * Matches by:
+ * 1. Exact permalink or Instagram shortcode
+ * 2. Normalized text prefix/substring or significant word overlap (>= 60%)
+ * 3. Scheduled/effective publication timestamp proximity (within +-90 minutes on the same page/account)
+ */
+function findMatchingMetaPost(metaPosts = [], target = {}) {
+  if (!Array.isArray(metaPosts) || !metaPosts.length) return null;
+
+  const targetPermalink = String(target.permalink || "").trim();
+  const igShortcode = targetPermalink.match(/\/p\/([^\/\?]+)/)?.[1];
+  const fbStoryFbid = targetPermalink.match(/story_fbid=([^&]+)/)?.[1];
+
+  // 1. Permalink / shortcode match
+  if (targetPermalink) {
+    const byUrl = metaPosts.find(p => {
+      const pUrl = String(p.permalink || p.permalink_url || "").trim();
+      if (!pUrl) return false;
+      if (pUrl === targetPermalink) return true;
+      if (igShortcode && pUrl.includes(igShortcode)) return true;
+      if (fbStoryFbid && (pUrl.includes(fbStoryFbid) || String(p.id || "").includes(fbStoryFbid))) return true;
+      return false;
+    });
+    if (byUrl) return byUrl;
+  }
+
+  // 2. Normalized text match
+  const normTarget = normalizeTextForMatch(target.postText || target.text || "");
+  if (normTarget.length >= 6) {
+    const targetPrefix = normTarget.slice(0, 35);
+    const targetWords = normTarget.split(" ").filter(w => w.length >= 4);
+
+    let bestTextMatch = null;
+    let bestScore = 0;
+
+    for (const p of metaPosts) {
+      const normCandidate = normalizeTextForMatch(extractMetaPostText(p));
+      if (!normCandidate) continue;
+
+      const candPrefix = normCandidate.slice(0, 35);
+      if (
+        normCandidate === normTarget ||
+        (targetPrefix.length >= 10 && normCandidate.includes(targetPrefix)) ||
+        (candPrefix.length >= 10 && normTarget.includes(candPrefix))
+      ) {
+        return p;
+      }
+
+      if (targetWords.length >= 2) {
+        const candWordSet = new Set(normCandidate.split(" ").filter(w => w.length >= 4));
+        const shared = targetWords.filter(w => candWordSet.has(w)).length;
+        const ratio = shared / targetWords.length;
+        if (ratio >= 0.6 && ratio > bestScore) {
+          bestScore = ratio;
+          bestTextMatch = p;
+        }
+      }
+    }
+
+    if (bestTextMatch) return bestTextMatch;
+  }
+
+  // 3. Publication timestamp proximity match (within +-90 minutes of scheduled/effectiveDate)
+  const rawDate = target.effectiveDate || target.publishedAt || target.scheduledAt;
+  if (rawDate) {
+    const targetMs = new Date(rawDate).getTime();
+    // Only match by time if the scheduled time is in the past or within the next 5 minutes
+    if (!isNaN(targetMs) && targetMs <= Date.now() + 5 * 60 * 1000) {
+      const maxWindowMs = 90 * 60 * 1000; // 90 minutes
+      let closestPost = null;
+      let minDiff = Infinity;
+
+      for (const p of metaPosts) {
+        const pDateStr = p.created_time || p.timestamp || p.createdTime;
+        if (!pDateStr) continue;
+        const pMs = new Date(pDateStr).getTime();
+        if (isNaN(pMs)) continue;
+
+        const diff = Math.abs(pMs - targetMs);
+        if (diff <= maxWindowMs && diff < minDiff) {
+          minDiff = diff;
+          closestPost = p;
+        }
+      }
+
+      if (closestPost) return closestPost;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -226,5 +350,8 @@ function deduplicateTimelineItems(items = []) {
 module.exports = {
   detectMetaPlatform,
   isStandardPostFormat,
+  normalizeTextForMatch,
+  extractMetaPostText,
+  findMatchingMetaPost,
   deduplicateTimelineItems
 };

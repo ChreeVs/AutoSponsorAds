@@ -2,13 +2,15 @@ const { isStandardPostFormat } = require("./postFilter");
 
 class PubblieService {
   constructor(env = {}) {
-    this.apiKey = env.PUBBLIE_API_KEY || "";
+    const raw = String(env.PUBBLIE_API_KEY || "").trim();
+    this.apiKey = raw.toLowerCase().includes("your_") ? "" : raw;
     this.baseUrl = "https://pubblie.io";
     this.cache = new Map();
   }
 
   setApiKey(key) {
-    this.apiKey = (key || "").trim();
+    const raw = String(key || "").trim();
+    this.apiKey = raw.toLowerCase().includes("your_") ? "" : raw;
     this.cache.clear();
   }
 
@@ -208,19 +210,21 @@ class PubblieService {
     const postOnlyItems = items.filter(p => isStandardPostFormat(p));
     const normalized = postOnlyItems.map(p => this.normalizePost(p, projectId));
 
-    // Fast detail enrichment for upcoming posts to extract S3 image thumbnails (max 5 posts sequentially to avoid 429)
-    const needImages = normalized.filter(p => (!p.images || p.images.length === 0) && (p.imageCount > 0 || p.hasMedia)).slice(0, 5);
+    // Fast parallel detail enrichment for upcoming posts that have no thumbnail URL yet (max 4 posts)
+    const needImages = normalized.filter(p => (!p.images || p.images.length === 0) && (p.imageCount > 0 || p.hasMedia)).slice(0, 4);
     if (needImages.length > 0) {
-      for (const post of needImages) {
-        try {
-          const detail = await this.getPostDetails(post.id, apiKey);
-          if (detail && detail.images && detail.images.length) {
-            post.images = detail.images;
+      await Promise.all(
+        needImages.map(async (post) => {
+          try {
+            const detail = await this.getPostDetails(post.id, apiKey);
+            if (detail && detail.images && detail.images.length) {
+              post.images = detail.images.slice(0, 1);
+            }
+          } catch {
+            // ignore individual fetch errors
           }
-        } catch {
-          // ignore individual fetch errors
-        }
-      }
+        })
+      );
     }
 
     return normalized;
@@ -237,28 +241,51 @@ class PubblieService {
   }
 
   /**
+   * Helper to extract the most lightweight thumbnail URL from an image entry
+   */
+  extractBestThumbUrl(img) {
+    if (!img) return "";
+    if (typeof img === "string") return img.trim();
+    if (typeof img === "object") {
+      return String(
+        img.thumbnailUrl ||
+        img.thumbUrl ||
+        img.thumbnail ||
+        img.previewUrl ||
+        img.smallUrl ||
+        img.url ||
+        img.src ||
+        ""
+      ).trim();
+    }
+    return "";
+  }
+
+  /**
    * Helper to normalize a Pubblie post object into a standard representation
    */
   normalizePost(p, projectId = "") {
     let images = [];
-    if (Array.isArray(p.images)) {
-      images = p.images.map(img => typeof img === "string" ? img : (img.url || img.src || ""));
+    if (p.thumbnailUrl || p.thumbUrl || p.previewUrl) {
+      images = [String(p.thumbnailUrl || p.thumbUrl || p.previewUrl).trim()];
+    } else if (Array.isArray(p.images)) {
+      images = p.images.map(img => this.extractBestThumbUrl(img)).filter(Boolean);
     } else if (typeof p.images === "string" && p.images.trim()) {
       try {
         const parsed = JSON.parse(p.images);
         if (Array.isArray(parsed)) {
-          images = parsed.map(img => typeof img === "string" ? img : (img.url || img.src || ""));
+          images = parsed.map(img => this.extractBestThumbUrl(img)).filter(Boolean);
         }
       } catch {
-        images = [p.images];
+        images = [p.images.trim()];
       }
     }
 
     if (!images.length && p.mediaUrls && Array.isArray(p.mediaUrls)) {
-      images = p.mediaUrls;
+      images = p.mediaUrls.map(img => this.extractBestThumbUrl(img)).filter(Boolean);
     }
     if (!images.length && p.mediaUrl) {
-      images = [p.mediaUrl];
+      images = [String(p.mediaUrl).trim()];
     }
 
     let channelIds = [];
@@ -277,9 +304,13 @@ class PubblieService {
             provider: a.provider || a.platform || a.type || "",
             accountName: a.accountName || a.name || a.username || "",
             channelId: String(a.channelId || a.id || ""),
-            postType: a.postType || a.type || a.format || "POST"
+            postType: a.postType || a.type || a.format || "POST",
+            externalId: a.externalId || a.socialPostId || a.postId || "",
+            permalink: a.permalink || a.publishedUrl || a.url || ""
           }))
       : [];
+
+    const validImages = images.filter(Boolean);
 
     return {
       id: String(p.id || p.postId),
@@ -291,11 +322,12 @@ class PubblieService {
       status: (p.status || "SCHEDULED").toUpperCase(),
       channelIds,
       accounts,
-      images: images.filter(Boolean),
-      imageCount: Number(p.imageCount || images.length || 0),
-      hasMedia: Boolean(p.hasMedia || images.length > 0 || (p.imageCount && p.imageCount > 0)),
+      images: validImages.slice(0, 1),
+      imageCount: Number(p.imageCount || validImages.length || 0),
+      hasMedia: Boolean(p.hasMedia || validImages.length > 0 || (p.imageCount && p.imageCount > 0)),
       videoIds: Array.isArray(p.videoIds) ? p.videoIds : (p.videoIds ? String(p.videoIds).split(",").map(s => s.trim()) : []),
-      link: p.link || p.url || "",
+      link: p.link || p.url || p.permalink || "",
+      externalId: p.externalId || p.socialPostId || "",
       customerApprovalRequired: Boolean(p.customerApprovalRequired)
     };
   }

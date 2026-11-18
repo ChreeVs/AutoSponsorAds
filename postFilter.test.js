@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   detectMetaPlatform,
   isStandardPostFormat,
+  findMatchingMetaPost,
   deduplicateTimelineItems
 } = require("./postFilter");
 
@@ -16,7 +17,7 @@ test("detectMetaPlatform identifies only Facebook and Instagram and rejects exte
   assert.equal(detectMetaPlatform("meta", "TikTok Italia"), null);
 });
 
-test("isStandardPostFormat accepts standard POSTs and rejects Stories, Reels, Shorts, and Live", () => {
+test("isStandardPostFormat accepts standard POSTs (including Facebook shared_story and story.php) and rejects Stories, Reels, Shorts, and Live", () => {
   assert.equal(isStandardPostFormat({ id: "1", type: "POST", text: "Nuovo prodotto disponibile" }), true);
   assert.equal(isStandardPostFormat({ id: "2", media_product_type: "FEED", media_type: "IMAGE" }), true);
   assert.equal(isStandardPostFormat({ id: "3", media_product_type: "STORY", media_type: "IMAGE" }), false);
@@ -26,6 +27,43 @@ test("isStandardPostFormat accepts standard POSTs and rejects Stories, Reels, Sh
   assert.equal(isStandardPostFormat({ id: "7", permalink: "https://www.instagram.com/reel/ABC123/" }), false);
   assert.equal(isStandardPostFormat({ id: "8", permalink: "https://www.instagram.com/stories/user/123/" }), false);
   assert.equal(isStandardPostFormat({ id: "9", permalink: "https://www.instagram.com/p/ABC123/" }), true);
+  assert.equal(
+    isStandardPostFormat({
+      id: "865867900231234_999",
+      status_type: "shared_story",
+      permalink_url: "https://www.facebook.com/story.php?story_fbid=999&id=865867900231234"
+    }),
+    true
+  );
+});
+
+test("findMatchingMetaPost matches published Facebook/Instagram posts by text or scheduled timestamp proximity", () => {
+  const fbPosts = [
+    {
+      id: "865867900231234_101",
+      message: "FIAT GRANDE PANDA - Grande Panda Benzina in promozione per tutti, anche senza un'auto da rottamare.",
+      created_time: "2026-11-17T10:00:12+0000",
+      permalink_url: "https://www.facebook.com/865867900231234/posts/101"
+    },
+    {
+      id: "865867900231234_100",
+      message: "Post precedente di ieri",
+      created_time: "2026-11-16T09:00:00+0000"
+    }
+  ];
+
+  // Match by normalized text (even with curly apostrophe vs straight apostrophe)
+  const matchedByText = findMatchingMetaPost(fbPosts, {
+    postText: "FIAT GRANDE PANDA\nGrande Panda Benzina in promozione per tutti, anche senza un’auto da rottamare."
+  });
+  assert.equal(matchedByText?.id, "865867900231234_101");
+
+  // Match by scheduled timestamp proximity (11:00 Europe/Rome = 10:00 UTC) even if text is empty
+  const matchedByTime = findMatchingMetaPost(fbPosts, {
+    postText: "",
+    effectiveDate: "2026-11-17T10:00:00.000Z"
+  });
+  assert.equal(matchedByTime?.id, "865867900231234_101");
 });
 
 test("deduplicateTimelineItems removes duplicate posts and non-Meta items", () => {
@@ -83,25 +121,21 @@ test("deduplicateTimelineItems removes duplicate posts and non-Meta items", () =
 
 test("AutomationEngine.getNextDaily1800RomeMs computes next 18:00 Europe/Rome across CET and CEST", () => {
   const AutomationEngine = require("./automationEngine");
-  // Winter (CET = UTC+1): 10:00 UTC is 11:00 Rome -> next 18:00 Rome is today at 17:00 UTC
   const winterMorningUtc = Date.parse("2026-11-17T10:00:00.000Z");
   assert.equal(
     new Date(AutomationEngine.getNextDaily1800RomeMs(winterMorningUtc)).toISOString(),
     "2026-11-17T17:00:00.000Z"
   );
 
-  // Winter (CET = UTC+1): 17:30 UTC is 18:30 Rome -> next 18:00 Rome is tomorrow at 17:00 UTC
   const winterEveningUtc = Date.parse("2026-11-17T17:30:00.000Z");
   assert.equal(
     new Date(AutomationEngine.getNextDaily1800RomeMs(winterEveningUtc)).toISOString(),
     "2026-11-18T17:00:00.000Z"
   );
 
-  // Summer (CEST = UTC+2): 10:00 UTC is 12:00 Rome -> next 18:00 Rome is today at 16:00 UTC
   const summerMorningUtc = Date.parse("2026-07-15T10:00:00.000Z");
   assert.equal(
     new Date(AutomationEngine.getNextDaily1800RomeMs(summerMorningUtc)).toISOString(),
     "2026-07-15T16:00:00.000Z"
   );
 });
-

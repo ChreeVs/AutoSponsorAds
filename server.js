@@ -6,7 +6,7 @@ const db = require("./db");
 const MetaService = require("./metaService");
 const AutomationEngine = require("./automationEngine");
 const PubblieService = require("./pubblieService");
-const { detectMetaPlatform, isStandardPostFormat, deduplicateTimelineItems } = require("./postFilter");
+const { detectMetaPlatform, isStandardPostFormat, deduplicateTimelineItems, findMatchingMetaPost, normalizeTextForMatch } = require("./postFilter");
 
 const ROOT = typeof __dirname !== "undefined" ? __dirname : "/";
 const PORT = Number((typeof process !== "undefined" && process.env && process.env.PORT) || 3000);
@@ -1255,14 +1255,29 @@ async function handleApi(req, res, url) {
       const mappings = await db.getPubblieMappings();
       const automations = await db.getAutomations();
       const mapping = mappings.find(m => m.channel_id === body.channelId || (m.ad_account_id === body.adAccountId && m.adset_id === body.adsetId));
-      const auto = automations.find(a => (body.automationId && a.id === body.automationId) || (mapping?.automation_id && a.id === mapping.automation_id) || (a.ad_account_id === body.adAccountId && a.adset_id === body.adsetId));
 
-      let platform = body.platform || auto?.platform || "Instagram";
+      let platform = body.platform || (mapping?.channel_provider?.toLowerCase().includes("face") ? "Facebook" : "") || "Instagram";
       if (platform.includes("Meta") || platform.includes("FB+IG")) {
         platform = "Instagram";
       }
+      const normPlatform = platform.toLowerCase();
+      const normChannelName = normalizeTextForMatch(body.channelName || mapping?.channel_name || "");
 
-      let pageId = body.pageId || auto?.page_id || null;
+      // Cerca prima tra le automazioni della stessa piattaforma (Facebook o Instagram)
+      const samePlatformAutos = automations.filter(a => (a.platform || "").toLowerCase() === normPlatform);
+      const auto =
+        samePlatformAutos.find(a => body.automationId && a.id === body.automationId) ||
+        samePlatformAutos.find(a => mapping?.automation_id && a.id === mapping.automation_id) ||
+        samePlatformAutos.find(a => a.ad_account_id === body.adAccountId && a.adset_id === body.adsetId) ||
+        (normChannelName ? samePlatformAutos.find(a => {
+          const sn = normalizeTextForMatch(a.source_name || "");
+          return sn && (sn.includes(normChannelName) || normChannelName.includes(sn));
+        }) : null) ||
+        samePlatformAutos.find(a => a.ad_account_id === body.adAccountId) ||
+        automations.find(a => (body.automationId && a.id === body.automationId) || (mapping?.automation_id && a.id === mapping.automation_id) || (a.ad_account_id === body.adAccountId && a.adset_id === body.adsetId));
+
+      // Nota fondamentale: per le automazioni Facebook, l'ID della Pagina Facebook e salvato in `source_id`
+      let pageId = body.pageId || (platform === "Facebook" ? (auto?.source_id || auto?.page_id) : auto?.page_id) || null;
       let instagramAccountId = body.instagramAccountId || (platform === "Instagram" ? auto?.source_id : null);
 
       if (!pageId && instagramAccountId) {
@@ -1270,95 +1285,147 @@ async function handleApi(req, res, url) {
         if (page?.id) pageId = page.id;
       }
 
-      if (!pageId || (platform === "Instagram" && !instagramAccountId)) {
-        try {
-          const sources = await metaService.listSourcesForAdAccount(body.adAccountId);
-          if (!pageId && sources.facebookPages?.length) {
-            pageId = sources.facebookPages[0].id;
-          }
-          if (!instagramAccountId && sources.instagramAccounts?.length) {
-            instagramAccountId = sources.instagramAccounts[0].id;
-            if (!pageId && sources.instagramAccounts[0].pageId) {
-              pageId = sources.instagramAccounts[0].pageId;
+      // Costruisci lista ordinata di sorgenti candidate per questo Ad Account
+      const candidatePageIds = [];
+      const candidateIgAccounts = [];
+      const addCandidatePage = (id) => {
+        if (id && !candidatePageIds.includes(String(id))) candidatePageIds.push(String(id));
+      };
+      const addCandidateIg = (id, pId) => {
+        if (id && !candidateIgAccounts.some(x => x.id === String(id))) {
+          candidateIgAccounts.push({ id: String(id), pageId: pId ? String(pId) : null });
+        }
+      };
+
+      if (pageId) addCandidatePage(pageId);
+      if (instagramAccountId) addCandidateIg(instagramAccountId, pageId);
+
+      // Aggiungi eventuali altre automazioni dello stesso Ad Account
+      for (const a of samePlatformAutos.filter(x => x.ad_account_id === body.adAccountId)) {
+        if (platform === "Facebook") addCandidatePage(a.source_id || a.page_id);
+        if (platform === "Instagram") addCandidateIg(a.source_id, a.page_id);
+      }
+
+      try {
+        const sources = await metaService.listSourcesForAdAccount(body.adAccountId);
+        if (platform === "Facebook" && Array.isArray(sources.facebookPages)) {
+          // Prima le pagine il cui nome combacia con il canale Pubblie
+          if (normChannelName) {
+            for (const fp of sources.facebookPages) {
+              const fn = normalizeTextForMatch(`${fp.name || ""} ${fp.label || ""}`);
+              if (fn && (fn.includes(normChannelName) || normChannelName.includes(fn))) {
+                addCandidatePage(fp.id);
+              }
             }
           }
-        } catch {}
+          for (const fp of sources.facebookPages) addCandidatePage(fp.id);
+        }
+        if (platform === "Instagram" && Array.isArray(sources.instagramAccounts)) {
+          if (normChannelName) {
+            for (const ig of sources.instagramAccounts) {
+              const ign = normalizeTextForMatch(`${ig.name || ""} ${ig.label || ""} ${ig.pageName || ""}`);
+              if (ign && (ign.includes(normChannelName) || normChannelName.includes(ign))) {
+                addCandidateIg(ig.id, ig.pageId);
+              }
+            }
+          }
+          for (const ig of sources.instagramAccounts) addCandidateIg(ig.id, ig.pageId);
+        }
+      } catch {}
+
+      if (!pageId && candidatePageIds.length) pageId = candidatePageIds[0];
+      if (!instagramAccountId && candidateIgAccounts.length) {
+        instagramAccountId = candidateIgAccounts[0].id;
+        if (!pageId && candidateIgAccounts[0].pageId) pageId = candidateIgAccounts[0].pageId;
       }
 
       // 2. Risoluzione dell'ID Post effettivo su Meta (solo formato POST)
       let metaPostId = null;
-      const permalink = body.permalink || "";
-      if (/\/(?:reel|reels|stories|story|shorts)\//i.test(permalink)) {
+      let permalink = body.permalink || "";
+      let postText = (body.postText || body.adName || "").trim();
+      let effectiveDate = body.effectiveDate || body.publishedAt || body.scheduledAt || "";
+
+      // Se il post arriva da Pubblie e manca testo o link, prova ad arricchire i dettagli da Pubblie
+      const rawPubblieId = String(body.sourcePostId || body.postId || "")
+        .replace(/^pub_/, "")
+        .replace(/_(facebook|instagram)$/i, "");
+      if (rawPubblieId && pubblieService.getApiKey() && (!postText || !permalink)) {
+        try {
+          const detail = await pubblieService.getPostDetails(rawPubblieId);
+          if (detail) {
+            if (!postText && detail.text) postText = detail.text;
+            if (!permalink && detail.link) permalink = detail.link;
+            if (!effectiveDate) effectiveDate = detail.publishedAt || detail.scheduleDateTime || "";
+            const accMatch = (detail.accounts || []).find(a =>
+              (a.provider || "").toLowerCase().includes(normPlatform.slice(0, 4))
+            );
+            if (!permalink && accMatch?.permalink) permalink = accMatch.permalink;
+          }
+        } catch {}
+      }
+
+      if (/\/(?:reel|reels|stories|shorts)\//i.test(permalink) || (/\/story\//i.test(permalink) && !permalink.includes("story.php"))) {
         return json(res, 400, {
           error: "Impossibile sponsorizzare: sono ammessi esclusivamente i contenuti in formato POST standard (non Storie o Reel)."
         }, req);
       }
-      const igShortcode = permalink.match(/\/p\/([^\/\?]+)/)?.[1];
-      const postText = (body.postText || body.adName || "").trim();
+
+      let lastGraphError = null;
 
       // Cerca nei post pubblicati su Instagram
-      if (platform === "Instagram" && instagramAccountId) {
-        try {
-          const igMedia = await metaService.getInstagramMedia(instagramAccountId, pageId, 30);
-          const mediaList = (igMedia.data || []).filter(m => isStandardPostFormat(m));
-
-          let match = mediaList.find(m => {
-            if (permalink && m.permalink && m.permalink === permalink) return true;
-            if (igShortcode && m.permalink && m.permalink.includes(igShortcode)) return true;
-            return false;
-          });
-
-          if (!match && postText.length >= 10) {
-            const cleanTarget = postText.slice(0, 40).toLowerCase();
-            match = mediaList.find(m => {
-              const cap = (m.caption || "").toLowerCase();
-              return cap && (cap.includes(cleanTarget) || cleanTarget.includes(cap.slice(0, 40)));
-            });
+      if (platform === "Instagram" && candidateIgAccounts.length) {
+        for (const cand of candidateIgAccounts) {
+          try {
+            const igMedia = await metaService.getInstagramMedia(cand.id, cand.pageId || pageId, 40);
+            const mediaList = (igMedia.data || []).filter(m => isStandardPostFormat(m));
+            const match = findMatchingMetaPost(mediaList, { permalink, postText, effectiveDate });
+            if (match) {
+              metaPostId = match.id;
+              instagramAccountId = cand.id;
+              if (cand.pageId) pageId = cand.pageId;
+              break;
+            }
+          } catch (err) {
+            lastGraphError = err;
+            console.warn(`[Timeline Sponsor] Errore verifica media Instagram (${cand.id}):`, err.message);
           }
-
-          if (match) {
-            metaPostId = match.id;
-          }
-        } catch (err) {
-          console.warn("[Timeline Sponsor] Errore verifica media Instagram:", err.message);
         }
       }
 
       // Cerca nei post pubblicati su Facebook
-      if (platform === "Facebook" && pageId) {
-        try {
-          const fbPosts = await metaService.getFacebookPosts(pageId, 30);
-          const postList = (fbPosts.data || []).filter(p => isStandardPostFormat(p));
-
-          let match = postList.find(p => {
-            if (permalink && p.permalink_url && p.permalink_url === permalink) return true;
-            return false;
-          });
-
-          if (!match && postText.length >= 10) {
-            const cleanTarget = postText.slice(0, 40).toLowerCase();
-            match = postList.find(p => {
-              const msg = (p.message || "").toLowerCase();
-              return msg && (msg.includes(cleanTarget) || cleanTarget.includes(msg.slice(0, 40)));
-            });
+      if (platform === "Facebook" && candidatePageIds.length) {
+        for (const candPageId of candidatePageIds) {
+          try {
+            const fbPosts = await metaService.getFacebookPosts(candPageId, 40);
+            const postList = (fbPosts.data || []).filter(p => isStandardPostFormat(p));
+            const match = findMatchingMetaPost(postList, { permalink, postText, effectiveDate });
+            if (match) {
+              metaPostId = match.id;
+              pageId = candPageId;
+              break;
+            }
+          } catch (err) {
+            lastGraphError = err;
+            console.warn(`[Timeline Sponsor] Errore verifica post Facebook (${candPageId}):`, err.message);
           }
-
-          if (match) {
-            metaPostId = match.id;
-          }
-        } catch (err) {
-          console.warn("[Timeline Sponsor] Errore verifica post Facebook:", err.message);
         }
       }
 
       // Se non trovato tramite ricerca remota, controlla se il sourcePostId fornito e gia un ID Meta valido
       if (!metaPostId) {
         const rawCandidate = String(body.sourcePostId || body.postId || "");
-        if (platform === "Facebook" && rawCandidate.includes("_")) {
+        if (platform === "Facebook" && /^\d+_\d+$/.test(rawCandidate)) {
           metaPostId = rawCandidate;
         } else if (platform === "Instagram" && /^\d{16,22}$/.test(rawCandidate)) {
           metaPostId = rawCandidate;
         }
+      }
+
+      // Se si e verificato un errore di token/permessi su Meta API e non abbiamo potuto leggere i post
+      if (!metaPostId && lastGraphError && (lastGraphError.status === 400 || lastGraphError.status === 401 || String(lastGraphError.message).toLowerCase().includes("token"))) {
+        return json(res, 400, {
+          error: `Errore connessione Meta API durante la lettura dei post su ${platform}: ${lastGraphError.message}. Verifica o rinnova il token nella sezione Setup.`
+        }, req);
       }
 
       // Se il post non risulta ancora pubblicato online su Meta, blocca con un messaggio chiaro e costruttivo
@@ -1688,20 +1755,16 @@ async function ensureInitialized() {
     initPromise = (async () => {
       await db.initDb(currentDbUrl);
 
-      if (!metaService.token()) {
-        const savedToken = await db.getSetting("META_ACCESS_TOKEN");
-        if (savedToken) {
-          metaService.updateConfig({ META_ACCESS_TOKEN: savedToken });
-          console.log("[Auth] Token Meta caricato dal database persistente");
-        }
+      const savedToken = await db.getSetting("META_ACCESS_TOKEN");
+      if (savedToken && metaService.isValidToken(savedToken)) {
+        metaService.updateConfig({ META_ACCESS_TOKEN: savedToken });
+        console.log("[Auth] Token Meta caricato dal database persistente");
       }
 
-      if (!pubblieService.getApiKey()) {
-        const savedPubblieKey = await db.getSetting("PUBBLIE_API_KEY");
-        if (savedPubblieKey) {
-          pubblieService.setApiKey(savedPubblieKey);
-          console.log("[Pubblie] Chiave API Pubblie caricata dal database persistente");
-        }
+      const savedPubblieKey = await db.getSetting("PUBBLIE_API_KEY");
+      if (savedPubblieKey && !savedPubblieKey.toLowerCase().includes("your_")) {
+        pubblieService.setApiKey(savedPubblieKey);
+        console.log("[Pubblie] Chiave API Pubblie caricata dal database persistente");
       }
     })();
   }

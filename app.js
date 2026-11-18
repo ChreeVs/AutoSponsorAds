@@ -1550,6 +1550,14 @@ function renderTimeline() {
   });
 }
 
+function getThumbUrl(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== "string") return "";
+  const trimmed = rawUrl.trim();
+  if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) return trimmed;
+  // Usa proxy CDN globale wsrv.nl per comprimere le anteprime a 96x96 WebP (~4KB invece di diversi MB)
+  return `https://wsrv.nl/?url=${encodeURIComponent(trimmed)}&w=96&h=96&fit=cover&q=70&output=webp`;
+}
+
 function renderTimelineRow(item) {
   const platformName = item.platform === "Instagram" ? "Instagram" : "Facebook";
   const statusClass = item.flowStatus === "SPONSORED"
@@ -1566,6 +1574,7 @@ function renderTimelineRow(item) {
 
   const target = item.customTarget || item.mapping;
   const imgUrl = item.images?.[0] || "";
+  const thumbUrl = getThumbUrl(imgUrl);
 
   let targetHtml = "";
   if (target) {
@@ -1605,7 +1614,7 @@ function renderTimelineRow(item) {
       <div class="tl-col-content">
         <div class="tl-thumb">
           ${imgUrl
-            ? `<img src="${escapeHtml(imgUrl)}" alt="Anteprima post" loading="lazy" referrerpolicy="no-referrer">`
+            ? `<img src="${escapeHtml(thumbUrl)}" data-orig="${escapeHtml(imgUrl)}" width="48" height="48" alt="Anteprima" loading="lazy" decoding="async" fetchpriority="low" referrerpolicy="no-referrer" onerror="if(this.dataset.orig && this.src !== this.dataset.orig){this.src = this.dataset.orig;}else{this.style.display='none';}">`
             : `<span class="tl-thumb-placeholder">Post</span>`}
         </div>
         <div class="tl-text-wrap">
@@ -1752,9 +1761,15 @@ async function sponsorTimelinePostNow(itemId, btnEl) {
         platform: item.platform,
         adAccountId: target.ad_account_id,
         adsetId: target.adset_id,
-        channelId: item.channelId,
+        automationId: target.automation_id || "",
+        projectId: item.projectId || "",
+        channelId: item.channelId || "",
+        channelName: item.channelName || "",
         permalink: item.link || "",
         postText: item.text || "",
+        effectiveDate: item.effectiveDate || "",
+        scheduledAt: item.scheduledAt || "",
+        publishedAt: item.publishedAt || "",
         ctaLink: target.cta_link || "",
         ctaType: target.cta_type || "LEARN_MORE",
         adStatus: "ACTIVE"

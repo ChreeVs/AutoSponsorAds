@@ -13,8 +13,17 @@ class MetaService {
     this.graphBase = `https://graph.facebook.com/${this.apiVersion}`;
   }
 
+  isValidToken(val) {
+    if (!val || typeof val !== "string") return false;
+    const t = val.trim();
+    if (t.length < 20) return false;
+    if (t.toLowerCase().includes("your_")) return false;
+    return true;
+  }
+
   token() {
-    return this.config.META_ACCESS_TOKEN;
+    const t = this.config.META_ACCESS_TOKEN;
+    return this.isValidToken(t) ? t.trim() : null;
   }
 
   parseNamedIds(value) {
@@ -87,13 +96,15 @@ class MetaService {
   pageTokenForId(pageId) {
     const page = this.parseNamedIds(this.config.META_FACEBOOK_PAGES).find((item) => item.id === pageId);
     if (!page) return null;
-    return this.config[`META_PAGE_ACCESS_TOKEN_${page.label}`] || null;
+    const candidate = this.config[`META_PAGE_ACCESS_TOKEN_${page.label}`];
+    return this.isValidToken(candidate) ? candidate.trim() : null;
   }
 
   pageTokenForInstagramId(instagramId) {
     const instagram = this.parseNamedIds(this.config.META_INSTAGRAM_ACCOUNTS).find((item) => item.id === instagramId);
     if (!instagram) return null;
-    return this.config[`META_PAGE_ACCESS_TOKEN_${instagram.label}`] || null;
+    const candidate = this.config[`META_PAGE_ACCESS_TOKEN_${instagram.label}`];
+    return this.isValidToken(candidate) ? candidate.trim() : null;
   }
 
   pageForInstagramId(instagramId) {
@@ -431,15 +442,36 @@ class MetaService {
 
   async getFacebookPosts(pageId, limit = 25) {
     const { isStandardPostFormat } = require("./postFilter");
-    const pageAccessToken = this.pageTokenForId(pageId) || await this.dynamicPageTokenForId(pageId);
-    const payload = await this.graph(`/${pageId}/posts`, {
-      fields: "id,message,permalink_url,created_time,full_picture,status_type,attachments{media_type,type,title,description,unshimmed_url}",
-      limit: String(limit)
-    }, pageAccessToken || this.token());
-    if (Array.isArray(payload?.data)) {
-      payload.data = payload.data.filter(p => isStandardPostFormat(p));
+    const pageAccessToken = this.pageTokenForId(pageId) || await this.dynamicPageTokenForId(pageId) || this.token();
+    const edgesToTry = [`/${pageId}/posts`, `/${pageId}/published_posts`];
+    const fieldSetsToTry = [
+      "id,message,permalink_url,created_time,attachments{media_type,type,title,description,unshimmed_url}",
+      "id,message,permalink_url,created_time"
+    ];
+
+    let lastError = null;
+    for (const edge of edgesToTry) {
+      for (const fields of fieldSetsToTry) {
+        try {
+          const payload = await this.graph(edge, {
+            fields,
+            limit: String(limit)
+          }, pageAccessToken);
+          if (Array.isArray(payload?.data)) {
+            payload.data = payload.data.filter(p => isStandardPostFormat(p));
+            if (payload.data.length > 0 || edge === edgesToTry[edgesToTry.length - 1]) {
+              return payload;
+            }
+          }
+          break;
+        } catch (err) {
+          lastError = err;
+        }
+      }
     }
-    return payload;
+
+    if (lastError) throw lastError;
+    return { data: [] };
   }
 
   async getInstagramMedia(instagramId, pageId = null, limit = 25) {
